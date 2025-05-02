@@ -6,6 +6,7 @@ import React from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { Analytics } from "@vercel/analytics/react"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 
 const geistSans = Geist({
@@ -45,8 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* HEADER (optional nav) */}
             <Header />
             <Analytics />
-
-            {/* MAIN content */}
+            <SpeedInsights />
             <main className="row-start-2 w-full max-w-lg">
               {children}
             </main>
