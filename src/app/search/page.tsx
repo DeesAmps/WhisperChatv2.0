@@ -3,7 +3,6 @@
 
 import React, { useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { useRouter } from 'next/navigation';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../lib/firebase';
 
