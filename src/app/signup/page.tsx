@@ -1,10 +1,10 @@
 // src/app/signup/page.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as openpgp from 'openpgp';
-import { createUserWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { usePrivateKey } from '../../contexts/PrivateKeyContext';
@@ -15,16 +15,10 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [pubArmored, setPubArmored] = useState<string | null>(null);
   const [privArmored, setPrivArmored] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
   const router = useRouter();
   const { setPrivateKey } = usePrivateKey();
 
-  // If already logged in, skip signup
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) router.replace('/dashboard');
-    });
-    return unsub;
-  }, [router]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,11 +88,31 @@ export default function SignupPage() {
             value={privArmored}
           />
         </div>
+        {/* New: acknowledgment checkbox */}
+          <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={e => setAcknowledged(e.target.checked)}
+              className="form-checkbox h-5 w-5"
+            />
+            <span className="text-sm text-gray-700">
+              I have securely saved both my public and private keys.
+            </span>
+          </label>
 
-        <button
-          onClick={handleContinue}
-          className="w-full h-10 rounded-full bg-foreground text-background font-medium hover:bg-[#383838] transition-colors"
-        >
+          <button
+            
+            onClick={handleContinue}
+            disabled={!acknowledged}
+            className={`
+              w-full h-10 rounded-full font-medium text-sm
+              ${acknowledged
+                ? 'bg-foreground text-background hover:bg-[#383838]'
+                : 'bg-gray-300 text-gray-600 cursor-not-allowed'}
+              transition-colors
+            `}
+          >
           Continue to Dashboard
         </button>
       </div>
