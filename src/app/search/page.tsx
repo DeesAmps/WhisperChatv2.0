@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { getAuth } from 'firebase/auth';
-import { doc, getDoc, collection } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import React from 'react';
 
 export default function SearchPage() {
   const [targetUid, setTargetUid] = useState('');
   const [status, setStatus] = useState<string | null>(null);
-  const router = useRouter();
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
