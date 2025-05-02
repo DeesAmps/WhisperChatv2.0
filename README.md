@@ -1,6 +1,3 @@
-Thought for a couple of seconds
-
-
 # WhisperChatv2
 
 **Author:** David Sampson
