@@ -55,6 +55,7 @@ export default function Header() {
         )}
 
         <Link href="/search" className="hover:underline">Start Chat</Link>
+        <Link href="/keygen" className="hover:underline">Key Gen</Link>
         <Link href="/dashboard" className="hover:underline">Dashboard</Link>
       </nav>
     </header>

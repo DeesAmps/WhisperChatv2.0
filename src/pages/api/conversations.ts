@@ -19,6 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // 2) POST → create a new conversation request
   if (req.method === 'POST') {
+    // Expect exactly two UIDs, one of which must be the caller
     const { participants } = req.body as { participants?: string[] };
     if (
       !Array.isArray(participants) ||
@@ -29,16 +30,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .status(400)
         .json({ error: 'Must supply participants array of two UIDs including yourself' });
     }
-
+  
+    // Identify the other party
+    const otherUid = participants.find(p => p !== uid)!;
+  
+    // 1) Check for an existing conversation between these two UIDs
+    const existingSnap = await adminDb
+      .collection('conversations')
+      .where('participants', 'array-contains', uid)
+      .get();
+  
+    for (const doc of existingSnap.docs) {
+      const data = doc.data();
+      if (Array.isArray(data.participants) && data.participants.includes(otherUid)) {
+        // Found it—return existing conversation ID
+        return res.status(200).json({ convId: doc.id });
+      }
+    }
+  
+    // 2) No existing conversation → create a new one
     const approved: Record<string, boolean> = {};
-    participants.forEach((p) => {
-      approved[p] = p === uid;  // auto‑approve yourself, leave the other pending
+    participants.forEach(p => {
+      // auto‑approve the caller, leave the other pending
+      approved[p] = p === uid;
     });
-
+  
     const convRef = adminDb.collection('conversations').doc();
     await convRef.set({ participants, approved });
+  
     return res.status(201).json({ convId: convRef.id });
   }
+  
 
   // 3) GET pending → return all convs where approved[uid] === false
   if (req.method === 'GET' && req.query.mode === 'pending') {
