@@ -18,24 +18,42 @@ interface PrivateKeyContextProps {
 const PrivateKeyContext =
   createContext<PrivateKeyContextProps | undefined>(undefined);
 
+  async function ensureDecrypted(key: openpgp.PrivateKey): Promise<openpgp.PrivateKey> {
+    try {
+      // Attempt to decrypt with empty passphrase
+      return await openpgp.decryptKey({ privateKey: key, passphrase: '' });
+    } catch (err: unknown) {
+      // If it’s already decrypted, just return it
+      if (err instanceof Error && err.message.includes('already decrypted')) {
+        return key;
+      }
+      throw err;
+    }
+  }
+
 export function PrivateKeyProvider({ children }: { children: ReactNode }) {
   const [privateKey, _setPrivateKey] =
     useState<openpgp.PrivateKey | null>(null);
 
-  // On initial load, fetch from localStorage
+  // On mount: load armored string, parse, and ensure decrypted
   useEffect(() => {
     const armored = localStorage.getItem('privateKeyArmored');
-    if (armored) {
-      openpgp.readPrivateKey({ armoredKey: armored }).then((key) => {
-        _setPrivateKey(key);
-      });
-    }
+    if (!armored) return;
+
+    (async () => {
+      const readKey = await openpgp.readPrivateKey({ armoredKey: armored });
+      const decryptedKey = await ensureDecrypted(readKey);
+      _setPrivateKey(decryptedKey);
+    })();
   }, []);
 
-  // Wrap set to also persist armored text
+  // Wrapped setter: ensure decrypted, persist, then set
   function setPrivateKey(key: openpgp.PrivateKey, armored: string) {
-    localStorage.setItem('privateKeyArmored', armored);
-    _setPrivateKey(key);
+    (async () => {
+      const decryptedKey = await ensureDecrypted(key);
+      localStorage.setItem('privateKeyArmored', armored);
+      _setPrivateKey(decryptedKey);
+    })();
   }
 
   return (
