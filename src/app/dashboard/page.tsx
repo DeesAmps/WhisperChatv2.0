@@ -1,18 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
-import { auth, db } from '../../lib/firebase';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  updateDoc
-} from 'firebase/firestore';
+import { auth } from '../../lib/firebase';
 import React from 'react';
 
 interface Conversation {
@@ -26,57 +17,67 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Redirect to signup/login if not authenticated
+  // 1) Subscribe to auth state using your initialized `auth`
   useEffect(() => {
-    const unsub = onAuthStateChanged(getAuth(), user => {
-      if (!user) router.push('/');
-      else fetchPending(user.uid);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push('/');
+      } else {
+        loadPending(user);
+      }
     });
-    return unsub;
+    return unsubscribe;
   }, [router]);
 
-  // Fetch all conversations where approved[currentUid] == false
-  async function fetchPending(uid: string) {
+  // 2) Fetch pending via your API
+  async function loadPending(user: User) {
     setLoading(true);
-    const q = query(
-      collection(db, 'conversations'),
-      where('participants', 'array-contains', uid),
-      where(`approved.${uid}`, '==', false)
-    );
-    const snap = await getDocs(q);
-    const convs = snap.docs.map(d => ({
-      id: d.id,
-      ...(d.data() as Omit<Conversation, 'id'>)
-    }));
-    setPending(convs);
-    setLoading(false);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/conversations?mode=pending', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        console.error('Failed to load pending:', await res.text());
+        return;
+      }
+      setPending(await res.json());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // Approve a conversation
+  // 3) Approve via your API
   async function approve(convId: string) {
-    const user = getAuth().currentUser;
-    if (!user) return;
-    const convRef = doc(db, 'conversations', convId);
-    await updateDoc(convRef, {
-      [`approved.${user.uid}`]: true
+    const user = auth.currentUser!;
+    const token = await user.getIdToken();
+    const res = await fetch('/api/conversations', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ convId }),
     });
-    // Remove it from the list
-    setPending(p => p.filter(c => c.id !== convId));
+    if (!res.ok) {
+      console.error('Approve failed:', await res.text());
+      return;
+    }
+    setPending((p) => p.filter((c) => c.id !== convId));
   }
 
   if (loading) return <div>Loading…</div>;
-  if (pending.length === 0)
-    return <div>No pending conversation requests.</div>;
+  if (!pending.length) return <div>No pending conversation requests.</div>;
 
   return (
     <div style={{ maxWidth: 600, margin: '2rem auto' }}>
       <h1>Pending Conversations</h1>
       <ul>
-        {pending.map(conv => (
+        {pending.map((conv) => (
           <li key={conv.id} style={{ marginBottom: '1rem' }}>
-            <span>
-              Conversation ID: <strong>{conv.id}</strong>
-            </span>
+            <strong>{conv.id}</strong>
             <button
               style={{ marginLeft: '1rem' }}
               onClick={() => approve(conv.id)}
