@@ -1,9 +1,37 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    // Allow anyone to read public keys, but only the key owner to write
+    match /publicKeys/{userId} {
+      allow read;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId;
+    }
+
+    // Conversations
+    match /conversations/{convId} {
+      // Creation: must be authenticated & include self in participants
+      allow create: if request.auth != null
+                    && request.resource.data.participants
+                        .contains(request.auth.uid);
+
+      // Read/update: only participants
+      allow read, update: if request.auth != null
+                          && resource.data.participants
+                               .contains(request.auth.uid);
+
+      // Messages subcollection
+      match /messages/{msgId} {
+        // Posting a message: only participants
+        allow create: if request.auth != null
+                      && get(/databases/$(database)/documents/conversations/$(convId))
+                           .data.participants.contains(request.auth.uid);
+        // Reading messages: only participants
+        allow read: if request.auth != null
+                     && get(/databases/$(database)/documents/conversations/$(convId))
+                          .data.participants.contains(request.auth.uid);
+      }
     }
   }
 }

@@ -13,6 +13,7 @@ const firebaseConfig = {
   
 };
 
+console.log('🔥 Firebase config:', firebaseConfig);
 // Prevent double initialization
 const app = !getApps().length
   ? initializeApp(firebaseConfig)
