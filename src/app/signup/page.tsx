@@ -1,13 +1,13 @@
+// src/app/signup/page.tsx
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as openpgp from 'openpgp';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { usePrivateKey } from '../../contexts/PrivateKeyContext';
-import React from 'react';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -16,66 +16,73 @@ export default function SignupPage() {
   const { setPrivateKey } = usePrivateKey();
   const router = useRouter();
 
-  const handleSignup = async (e: React.FormEvent) => {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      // 1) Firebase Auth signup
-      const userCred = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCred.user.uid;
 
-      // 2) Generate PGP key pair
+      // Generate keypair
       const { privateKey: privArmored, publicKey: pubArmored } =
         await openpgp.generateKey({
           type: 'rsa',
           rsaBits: 2048,
           userIDs: [{ name: email, email }],
-          passphrase: '' // no passphrase for simplicity
+          passphrase: ''
         });
 
-      // 3) Load private key object into context
-      const privKeyObj = await openpgp.readPrivateKey({
-        armoredKey: privArmored
-      });
+      // Save private key in memory
+      const privKeyObj = await openpgp.readPrivateKey({ armoredKey: privArmored });
       setPrivateKey(privKeyObj);
 
-      // 4) Store public key in Firestore
+      // Upload public key
       await setDoc(doc(db, 'publicKeys', uid), {
         uid,
         publicKeyArmored: pubArmored
       });
 
-      // 5) Redirect to dashboard
       router.push('/dashboard');
-    } catch (err) {
-      console.error(err);
-      alert('Signup failed: ' + (err as Error).message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        alert('Signup failed: ' + err.message);
+      } else {
+        alert('Signup failed');
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div style={{ maxWidth: 400, margin: '2rem auto' }}>
-      <h1>Sign Up</h1>
-      <form onSubmit={handleSignup}>
-        <label>
-          Email
+    <div className="
+      flex flex-col gap-[32px]
+      items-center sm:items-start
+      font-[family-name:var(--font-geist-mono)]
+    ">
+      <h1 className="text-2xl font-semibold mb-2">Sign Up</h1>
+      <form onSubmit={handleSignup} className="space-y-4 w-full">
+        <label className="block">
+          <span>Email</span>
           <input
             type="email"
+            className="
+              mt-1 block w-full border border-gray-300 rounded-md
+              px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500
+            "
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
           />
         </label>
-        <label style={{ display: 'block', marginTop: '1rem' }}>
-          Password
+        <label className="block">
+          <span>Password</span>
           <input
             type="password"
+            className="
+              mt-1 block w-full border border-gray-300 rounded-md
+              px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500
+            "
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
@@ -84,7 +91,12 @@ export default function SignupPage() {
         <button
           type="submit"
           disabled={loading}
-          style={{ marginTop: '1rem' }}
+          className="
+            w-full h-10 rounded-full
+            bg-foreground text-background font-medium text-sm
+            hover:bg-[#383838] dark:hover:bg-[#ccc]
+            transition-colors disabled:opacity-50
+          "
         >
           {loading ? 'Signing up…' : 'Sign Up & Generate Keys'}
         </button>

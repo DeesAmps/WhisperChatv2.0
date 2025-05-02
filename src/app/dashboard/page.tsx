@@ -1,15 +1,13 @@
+// src/app/dashboard/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import React, { useEffect, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { auth } from '../../lib/firebase';
-import React from 'react';
+import {auth} from '../../lib/firebase';
 
 interface Conversation {
   id: string;
-  participants: string[];
-  approved: Record<string, boolean>;
 }
 
 export default function DashboardPage() {
@@ -17,70 +15,73 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // 1) Subscribe to auth state using your initialized `auth`
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, user => {
       if (!user) {
         router.push('/');
       } else {
-        loadPending(user);
+        fetchPending();
       }
     });
-    return unsubscribe;
+    return unsub;
   }, [router]);
 
-  // 2) Fetch pending via your API
-  async function loadPending(user: User) {
+  async function fetchPending() {
     setLoading(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/conversations?mode=pending', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        console.error('Failed to load pending:', await res.text());
-        return;
-      }
-      setPending(await res.json());
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    const user = auth.currentUser!;
+    const token = await user.getIdToken();
+    const res = await fetch('/api/conversations?mode=pending', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const convs: Conversation[] = (await res.json()) || [];
+    setPending(convs);
+    setLoading(false);
   }
 
-  // 3) Approve via your API
   async function approve(convId: string) {
     const user = auth.currentUser!;
     const token = await user.getIdToken();
-    const res = await fetch('/api/conversations', {
+    await fetch('/api/conversations', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify({ convId }),
+      body: JSON.stringify({ convId })
     });
-    if (!res.ok) {
-      console.error('Approve failed:', await res.text());
-      return;
-    }
-    setPending((p) => p.filter((c) => c.id !== convId));
+    setPending(p => p.filter(c => c.id !== convId));
   }
 
   if (loading) return <div>Loading…</div>;
-  if (!pending.length) return <div>No pending conversation requests.</div>;
+  if (pending.length === 0) return <div>No pending chats.</div>;
 
   return (
-    <div style={{ maxWidth: 600, margin: '2rem auto' }}>
-      <h1>Pending Conversations</h1>
-      <ul>
-        {pending.map((conv) => (
-          <li key={conv.id} style={{ marginBottom: '1rem' }}>
-            <strong>{conv.id}</strong>
+    <div className="
+      flex flex-col gap-[32px]
+      items-center sm:items-start
+      font-[family-name:var(--font-geist-mono)]
+      w-full
+    ">
+      <h1 className="text-2xl font-semibold mb-2">Pending Conversations</h1>
+      <ul className="w-full space-y-2">
+        {pending.map(c => (
+          <li
+            key={c.id}
+            className="
+              flex justify-between items-center
+              border border-gray-200 dark:border-gray-700
+              rounded-md px-4 py-2
+            "
+          >
+            <span className="font-mono">{c.id}</span>
             <button
-              style={{ marginLeft: '1rem' }}
-              onClick={() => approve(conv.id)}
+              onClick={() => approve(c.id)}
+              className="
+                rounded-full h-10 px-4
+                bg-green-600 hover:bg-green-700
+                text-white font-medium text-sm
+                transition-colors
+              "
             >
               Approve
             </button>
