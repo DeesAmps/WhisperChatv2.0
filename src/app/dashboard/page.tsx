@@ -2,57 +2,72 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth } from '../../lib/firebase';
 
-interface Conversation {
-  id: string;
-}
+interface Conversation { id: string; }
 
 export default function DashboardPage() {
+  const [user, setUser]       = useState<User|null>(null);
   const [pending, setPending] = useState<Conversation[]>([]);
-  const [chats, setChats]       = useState<Conversation[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [chats, setChats]     = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // 1) Watch auth state once on mount
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, user => {
-      if (!user) {
+    const unsub = onAuthStateChanged(auth, u => {
+      if (!u) {
         router.push('/login');
       } else {
-        fetchLists();
+        setUser(u);
       }
     });
     return unsub;
   }, [router]);
 
-  async function fetchLists() {
-    setLoading(true);
-    const token = await auth.currentUser!.getIdToken();
+  // 2) When `user` becomes non-null, fetch lists *once*
+  useEffect(() => {
+    if (!user) return;
 
-    // Fetch pending requests
-    const pRes = await fetch('/api/conversations?mode=pending', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const pendingList: Conversation[] = pRes.ok ? await pRes.json() : [];
-    if (!pRes.ok) console.error('Pending fetch error:', await pRes.text());
+    let isActive = true; // guard against unmounts
+    (async () => {
+      setLoading(true);
+      const token = await user.getIdToken();
 
-    // Fetch approved chats
-    const aRes = await fetch('/api/conversations?mode=approved', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const approvedList: Conversation[] = aRes.ok ? await aRes.json() : [];
-    if (!aRes.ok) console.error('Approved fetch error:', await aRes.text());
+      const [pRes, aRes] = await Promise.all([
+        fetch('/api/conversations?mode=pending', {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch('/api/conversations?mode=approved', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
 
-    setPending(pendingList);
-    setChats(approvedList);
-    setLoading(false);
-  }
+      const pendingList: Conversation[] = pRes.ok ? await pRes.json() : [];
+      const approvedList: Conversation[] = aRes.ok ? await aRes.json() : [];
 
+      if (!pRes.ok) console.error('Pending fetch error:', await pRes.text());
+      if (!aRes.ok) console.error('Approved fetch error:', await aRes.text());
+
+      if (isActive) {
+        setPending(pendingList);
+        setChats(approvedList);
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [user]);
+
+  // 3) Approve handler (unchanged)
   async function approve(convId: string) {
-    const token = await auth.currentUser!.getIdToken();
+    if (!user) return;
+    const token = await user.getIdToken();
     const res = await fetch('/api/conversations', {
       method: 'PATCH',
       headers: {
@@ -62,21 +77,41 @@ export default function DashboardPage() {
       body: JSON.stringify({ convId })
     });
     if (res.ok) {
-      // remove from pending, add to chats
-      setPending(p => p.filter(c => c.id !== convId));
-      setChats(c => [...c, { id: convId }]);
+      setPending(ps => ps.filter(c => c.id !== convId));
+      setChats(cs => [...cs, { id: convId }]);
     } else {
       console.error('Approve error:', await res.text());
     }
   }
+
+  // 4) UID copy (unchanged)
+  const copyUid = () => {
+    if (!user) return;
+    navigator.clipboard.writeText(user.uid);
+    alert('UID copied to clipboard!');
+  };
 
   if (loading) {
     return <div className="p-8 text-center">Loading…</div>;
   }
 
   return (
-    <div className="space-y-8 font-[family-name:var(--font-geist-mono)] w-full">
-      {/* Pending Requests */}
+    <div className="space-y-8 font-[family-name:var(--font-geist-mono)] w-full max-w-lg mx-auto p-4">
+      {user && (
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-4">
+          <h2 className="text-lg font-medium mb-2">Your UID</h2>
+          <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-3 py-2 font-mono text-sm text-gray-900 dark:text-gray-100">
+            <span className="truncate">{user.uid}</span>
+            <button
+              onClick={copyUid}
+              className="ml-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+            >
+              Copy
+            </button>
+          </div>
+        </section>
+      )}
+
       <section>
         <h2 className="text-xl font-semibold mb-2">Pending Requests</h2>
         {pending.length === 0 ? (
@@ -101,7 +136,6 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* Your Chats */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Your Chats</h2>
         {chats.length === 0 ? (
