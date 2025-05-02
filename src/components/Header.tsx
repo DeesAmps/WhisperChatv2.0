@@ -53,7 +53,7 @@ export default function Header() {
         {!user && (
             <Link href="/signup" className="hover:underline">Sign Up</Link>
         )}
-
+        <Link href="/profile" className="hover:underline">Profile</Link>
         <Link href="/search" className="hover:underline">Start Chat</Link>
         <Link href="/keygen" className="hover:underline">Key Gen</Link>
         <Link href="/dashboard" className="hover:underline">Dashboard</Link>

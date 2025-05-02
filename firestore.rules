@@ -9,6 +9,15 @@ service cloud.firestore {
                    && request.auth.uid == userId;
     }
 
+    // User profiles: anyone can read basic info; only the owner can write
+    match /users/{userId} {
+      // Optionally allow only authenticated reads:
+      // allow read: if request.auth != null;
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId;
+    }
+
     // Conversations metadata
     match /conversations/{convId} {
       // Creation: you must include yourself
