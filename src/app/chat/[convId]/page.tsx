@@ -161,7 +161,7 @@ export default function ChatPage() {
 
   // Not approved
   if (approved === false) {
-    return <div className="p-8 text-center">🚫 You’re not approved for this chat.</div>;
+    return <div className="p-8 text-center">🚫 Youre not approved for this chat.</div>;
   }
 
   // Approved but missing decrypted private key
