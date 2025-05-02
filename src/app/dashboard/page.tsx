@@ -3,8 +3,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {auth} from '../../lib/firebase';
+import { auth } from '../../lib/firebase';
 
 interface Conversation {
   id: string;
@@ -12,36 +13,47 @@ interface Conversation {
 
 export default function DashboardPage() {
   const [pending, setPending] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [chats, setChats]       = useState<Conversation[]>([]);
+  const [loading, setLoading]   = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       if (!user) {
-        router.push('/');
+        router.push('/login');
       } else {
-        fetchPending();
+        fetchLists();
       }
     });
     return unsub;
   }, [router]);
 
-  async function fetchPending() {
+  async function fetchLists() {
     setLoading(true);
-    const user = auth.currentUser!;
-    const token = await user.getIdToken();
-    const res = await fetch('/api/conversations?mode=pending', {
+    const token = await auth.currentUser!.getIdToken();
+
+    // Fetch pending requests
+    const pRes = await fetch('/api/conversations?mode=pending', {
       headers: { Authorization: `Bearer ${token}` }
     });
-    const convs: Conversation[] = (await res.json()) || [];
-    setPending(convs);
+    const pendingList: Conversation[] = pRes.ok ? await pRes.json() : [];
+    if (!pRes.ok) console.error('Pending fetch error:', await pRes.text());
+
+    // Fetch approved chats
+    const aRes = await fetch('/api/conversations?mode=approved', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const approvedList: Conversation[] = aRes.ok ? await aRes.json() : [];
+    if (!aRes.ok) console.error('Approved fetch error:', await aRes.text());
+
+    setPending(pendingList);
+    setChats(approvedList);
     setLoading(false);
   }
 
   async function approve(convId: string) {
-    const user = auth.currentUser!;
-    const token = await user.getIdToken();
-    await fetch('/api/conversations', {
+    const token = await auth.currentUser!.getIdToken();
+    const res = await fetch('/api/conversations', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -49,45 +61,66 @@ export default function DashboardPage() {
       },
       body: JSON.stringify({ convId })
     });
-    setPending(p => p.filter(c => c.id !== convId));
+    if (res.ok) {
+      // remove from pending, add to chats
+      setPending(p => p.filter(c => c.id !== convId));
+      setChats(c => [...c, { id: convId }]);
+    } else {
+      console.error('Approve error:', await res.text());
+    }
   }
 
-  if (loading) return <div>Loading…</div>;
-  if (pending.length === 0) return <div>No pending chats.</div>;
+  if (loading) {
+    return <div className="p-8 text-center">Loading…</div>;
+  }
 
   return (
-    <div className="
-      flex flex-col gap-[32px]
-      items-center sm:items-start
-      font-[family-name:var(--font-geist-mono)]
-      w-full
-    ">
-      <h1 className="text-2xl font-semibold mb-2">Pending Conversations</h1>
-      <ul className="w-full space-y-2">
-        {pending.map(c => (
-          <li
-            key={c.id}
-            className="
-              flex justify-between items-center
-              border border-gray-200 dark:border-gray-700
-              rounded-md px-4 py-2
-            "
-          >
-            <span className="font-mono">{c.id}</span>
-            <button
-              onClick={() => approve(c.id)}
-              className="
-                rounded-full h-10 px-4
-                bg-green-600 hover:bg-green-700
-                text-white font-medium text-sm
-                transition-colors
-              "
-            >
-              Approve
-            </button>
-          </li>
-        ))}
-      </ul>
+    <div className="space-y-8 font-[family-name:var(--font-geist-mono)] w-full">
+      {/* Pending Requests */}
+      <section>
+        <h2 className="text-xl font-semibold mb-2">Pending Requests</h2>
+        {pending.length === 0 ? (
+          <p>No pending conversation requests.</p>
+        ) : (
+          <ul className="space-y-2">
+            {pending.map(c => (
+              <li
+                key={c.id}
+                className="flex justify-between items-center border border-gray-200 dark:border-gray-700 rounded-md px-4 py-2"
+              >
+                <span className="font-mono">{c.id}</span>
+                <button
+                  onClick={() => approve(c.id)}
+                  className="px-3 py-1 bg-green-600 text-white rounded"
+                >
+                  Approve
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Your Chats */}
+      <section>
+        <h2 className="text-xl font-semibold mb-2">Your Chats</h2>
+        {chats.length === 0 ? (
+          <p>You have no approved chats yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {chats.map(c => (
+              <li key={c.id}>
+                <Link
+                  href={`/chat/${c.id}`}
+                  className="font-mono text-blue-600 hover:underline"
+                >
+                  Chat {c.id}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

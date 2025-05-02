@@ -1,3 +1,4 @@
+// src/app/chat/[convId]/page.tsx
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -25,6 +26,7 @@ interface Message {
 }
 
 export default function ChatPage() {
+  // Grab convId from route params
   const params = useParams();
   const raw = params.convId;
   const convId = Array.isArray(raw) ? raw[0] : raw;
@@ -35,21 +37,34 @@ export default function ChatPage() {
   const [user, setUser] = useState<User | null>(null);
   const [approved, setApproved] = useState<boolean | null>(null);
   const [otherPubKey, setOtherPubKey] = useState<openpgp.PublicKey | null>(null);
+  const [myPubKey, setMyPubKey]         = useState<openpgp.PublicKey | null>(null);
   const [messages, setMessages] = useState<Array<{ id: string; text: string; isMine: boolean }>>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput]       = useState('');
   const [armoredInput, setArmoredInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 1) Auth
+  // Helper: ensure key is decrypted; ignore "already decrypted"
+  async function ensureDecrypted(key: openpgp.PrivateKey): Promise<openpgp.PrivateKey> {
+    try {
+      return await openpgp.decryptKey({ privateKey: key, passphrase: '' });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes('already decrypted')) {
+        return key;
+      }
+      throw err;
+    }
+  }
+
+  // 1) Watch auth state
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) router.push('/login');
-      else setUser(u);
+      if (!u) return router.push('/login');
+      setUser(u);
     });
     return unsub;
   }, [router]);
 
-  // 2) Check approval & load otherPubKey
+  // 2) Check approval + load both public keys
   useEffect(() => {
     if (!user || !convId) return;
     (async () => {
@@ -58,25 +73,32 @@ export default function ChatPage() {
       const ok = !!data?.approved?.[user.uid];
       setApproved(ok);
       if (!ok) return;
+
+      // Other's public key
       const participants = data.participants as string[];
-      const otherUid = participants.find((uid) => uid !== user.uid)!;
-      const keySnap = await getDoc(doc(db, 'publicKeys', otherUid));
-      const pubArmored = keySnap.data()!.publicKeyArmored as string;
-      setOtherPubKey(await openpgp.readKey({ armoredKey: pubArmored }));
+      const otherUid = participants.find(uid => uid !== user.uid)!;
+      const otherSnap = await getDoc(doc(db, 'publicKeys', otherUid));
+      const otherArm = otherSnap.data()!.publicKeyArmored as string;
+      setOtherPubKey(await openpgp.readKey({ armoredKey: otherArm }));
+
+      // Your public key (so you can decrypt your own msgs)
+      const mineSnap = await getDoc(doc(db, 'publicKeys', user.uid));
+      const myArm     = mineSnap.data()!.publicKeyArmored as string;
+      setMyPubKey(await openpgp.readKey({ armoredKey: myArm }));
     })();
   }, [user, convId]);
 
-  // 3) Subscribe to messages and decrypt
+  // 3) Subscribe & decrypt messages
   useEffect(() => {
     if (!approved || !privateKey || !convId) return;
-    const messagesRef = collection(db, 'conversations', convId, 'messages');
-    const q = query(messagesRef, orderBy('timestamp'));
+    const ref = collection(db, 'conversations', convId, 'messages');
+    const q   = query(ref, orderBy('timestamp'));
     const unsub = onSnapshot(
       q,
-      async (snap) => {
+      async snap => {
         const dec = await Promise.all(
-          snap.docs.map(async (d) => {
-            const m = d.data() as Message;
+          snap.docs.map(async d => {
+            const m      = d.data() as Message;
             const isMine = m.sender === user!.uid;
             const { data: text } = await openpgp.decrypt({
               message: await openpgp.readMessage({ armoredMessage: m.cipherText }),
@@ -88,106 +110,95 @@ export default function ChatPage() {
         setMessages(dec);
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       },
-      (err) => console.error('Subscription error:', err)
+      err => console.error('Subscription error:', err)
     );
     return unsub;
   }, [approved, privateKey, convId, user]);
 
-  // 4) Send message
+  // 4) Send: encrypt to both keys
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !approved || !otherPubKey || !privateKey || !convId) return;
+    if (!user || !approved || !otherPubKey || !myPubKey || !privateKey || !convId) return;
+
     const encrypted = await openpgp.encrypt({
       message: await openpgp.createMessage({ text: input }),
-      encryptionKeys: otherPubKey,
+      encryptionKeys: [otherPubKey, myPubKey], // 🔑 both keys
       signingKeys: privateKey
     });
-    await addDoc(
-      collection(db, 'conversations', convId, 'messages'),
-      { sender: user.uid, cipherText: encrypted, timestamp: serverTimestamp() }
-    );
+
+    const ref = collection(db, 'conversations', convId, 'messages');
+    await addDoc(ref, {
+      sender: user.uid,
+      cipherText: encrypted,
+      timestamp: serverTimestamp()
+    });
     setInput('');
   }
 
-  async function ensureDecrypted(key: openpgp.PrivateKey): Promise<openpgp.PrivateKey> {
-    try {
-      // Attempt to decrypt with empty passphrase
-      return await openpgp.decryptKey({ privateKey: key, passphrase: '' });
-    } catch (err: unknown) {
-      // If it’s already decrypted, just return it
-      if (err instanceof Error && err.message.includes('already decrypted')) {
-        return key;
-      }
-      throw err;
-    }
-  }
+  // — RENDER STATES —
 
-  // — RENDERING —  
-
-  // 1) Not approved
+  // Not approved
   if (approved === false) {
     return <div className="p-8 text-center">🚫 You’re not approved for this chat.</div>;
   }
 
-  // 2) Waiting for approval check or keys
+  // Waiting on approval check
   if (approved === null) {
     return <div className="p-8 text-center">Loading…</div>;
   }
 
-  // 3) Approved—but missing privateKey: prompt import
+  // Approved but missing your decrypted private key
   if (approved && !privateKey) {
     return (
       <div className="p-8 max-w-md mx-auto">
         <h2 className="text-xl mb-2">Import Your Private Key</h2>
         <p className="mb-4 text-sm text-gray-600">
-          Paste the PGP private key you generated at signup to decrypt messages.
+          Paste the PGP private key you generated at signup.
         </p>
         <textarea
-          className="w-full h-40 border rounded px-2 py-1 mb-2"
+          className="w-full h-40 border rounded px-2 py-1 mb-2 font-mono text-xs"
           value={armoredInput}
           onChange={e => setArmoredInput(e.target.value)}
         />
         <button
-            className="px-4 py-2 bg-blue-600 text-white rounded"
-            onClick={async () => {
-                try {
-                // Read the armored key
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+          onClick={async () => {
+            try {
+              const readKey     = await openpgp.readPrivateKey({ armoredKey: armoredInput });
+              const usableKey   = await ensureDecrypted(readKey);
+              setPrivateKey(usableKey, armoredInput);
+            } catch (err: unknown) {
+              if (err instanceof Error && err.message.includes('already decrypted')) {
                 const readKey = await openpgp.readPrivateKey({ armoredKey: armoredInput });
-                // Decrypt or pass through via ensureDecrypted
-                const usableKey = await ensureDecrypted(readKey);
-                // Store the decrypted key (and its armored form)
-                setPrivateKey(usableKey, armoredInput);
-                } catch (err: unknown) {
-                if (err instanceof Error && err.message.includes('already decrypted')) {
-                    // Fallback: it truly is already decrypted
-                    const readKey = await openpgp.readPrivateKey({ armoredKey: armoredInput });
-                    setPrivateKey(readKey, armoredInput);
-                } else {
-                    alert('Invalid private key. Please paste it correctly.');
-                }
-                }
-            }}
-            >
-            Import Key
-            </button>
+                setPrivateKey(readKey, armoredInput);
+              } else {
+                alert('Invalid private key. Please paste it correctly.');
+              }
+            }
+          }}
+        >
+          Import Key
+        </button>
       </div>
     );
   }
 
-  // 4) Waiting for otherPubKey
-  if (!otherPubKey) {
+  // Waiting on public keys
+  if (!otherPubKey || !myPubKey) {
     return <div className="p-8 text-center">Loading chat…</div>;
   }
 
-  // 5) Fully ready: chat UI
+  // — FINAL CHAT UI —
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto p-4 space-y-2">
         {messages.map(m => (
           <div
             key={m.id}
-            className={`max-w-md p-2 rounded ${
-              m.isMine ? 'bg-blue-100 self-end' : 'bg-gray-200'
+            className={`max-w-md p-2 rounded break-words ${
+              m.isMine 
+              ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100 self-end'
+              : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
             }`}
           >
             {m.text}
