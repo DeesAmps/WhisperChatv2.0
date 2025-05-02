@@ -25,6 +25,11 @@ interface Message {
   timestamp: { toDate: () => Date };
 }
 
+interface Profile {
+  displayName: string;
+  photoURL: string;
+}
+
 export default function ChatPage() {
   // — Hooks & State —
   const { privateKey, setPrivateKey } = usePrivateKey();
@@ -32,9 +37,10 @@ export default function ChatPage() {
   const [approved, setApproved]       = useState<boolean | null>(null);
   const [otherPubKey, setOtherPubKey] = useState<openpgp.PublicKey | null>(null);
   const [myPubKey, setMyPubKey]       = useState<openpgp.PublicKey | null>(null);
-  const [messages, setMessages]       = useState<{ id: string; text: string; isMine: boolean }[]>([]);
+  const [messages, setMessages]       = useState<{ id: string; text: string; isMine: boolean; sender: string }[]>([]);
   const [input, setInput]             = useState('');
   const [armoredInput, setArmoredInput] = useState('');
+  const [profiles, setProfiles]       = useState<Record<string, Profile>>({});
   const bottomRef                     = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
@@ -91,6 +97,21 @@ export default function ChatPage() {
       const mineSnap = await getDoc(doc(db, 'publicKeys', user.uid));
       const myArm     = mineSnap.data()!.publicKeyArmored as string;
       setMyPubKey(await openpgp.readKey({ armoredKey: myArm }));
+       
+      // --- NEW: fetch and cache each participant's profile ---
+      const docs = await Promise.all(
+          participants.map(uid => getDoc(doc(db, 'users', uid)))
+        );
+        const profMap: Record<string, Profile> = {};
+        participants.forEach((uid, i) => {
+          const d = docs[i].data();
+          profMap[uid] = {
+            displayName: d?.displayName || uid.slice(0,6),
+            photoURL:    d?.photoURL    || '/default-avatar.png'
+          };
+        });
+        setProfiles(profMap);
+        // -----------------------------------------------
     })();
   }, [user, convId]);
 
@@ -104,20 +125,24 @@ export default function ChatPage() {
       q,
       async snap => {
         const dec = await Promise.all(
-          snap.docs.map(async d => {
-            const { sender, cipherText } = d.data() as Message;
-            const isMine = sender === user!.uid;
-            try {
-              const { data: text } = await openpgp.decrypt({
-                message: await openpgp.readMessage({ armoredMessage: cipherText }),
-                decryptionKeys: privateKey
-              });
-              return { id: d.id, text, isMine };
-            } catch {
-              return { id: d.id, text: '[Unable to decrypt]', isMine };
-            }
-          })
-        );
+                    snap.docs.map(async d => {
+                      const m = d.data() as Message;
+                      const isMine = m.sender === user!.uid;
+                      let text: string;
+                      try {
+                        const { data } = await openpgp.decrypt({
+                          message: await openpgp.readMessage({ armoredMessage: m.cipherText }),
+                          decryptionKeys: privateKey
+                        });
+                        text = data;
+                      } catch {
+                        text = '[Unable to decrypt]';
+                      }
+                      // Always include sender
+                      return { id: d.id, text, isMine, sender: m.sender };
+                    })
+                  );
+          
         setMessages(dec);
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       },
@@ -184,18 +209,30 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto p-4 space-y-2">
-        {messages.map(m => (
-          <div
-            key={m.id}
-            className={`max-w-md p-2 rounded break-words ${
-              m.isMine
-                ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100 self-end'
-                : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
-            }`}
-          >
-            {m.text}
+      {messages.map(m => {
+        const prof = profiles[m.sender];
+        return (
+          <div key={m.id} className="flex items-start space-x-2">
+            <img
+              src={prof?.photoURL}
+              alt={prof?.displayName}
+              className="w-8 h-8 rounded-full"
+            />
+            <div className={`flex flex-col ${m.isMine ? 'ml-auto items-end' : ''}`}>
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                {prof?.displayName}
+              </span>
+              <div className={`mt-1 p-2 rounded ${
+                m.isMine
+                  ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100'
+                  : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+              }`}>
+                {m.text}
+              </div>
+            </div>
           </div>
-        ))}
+        );
+      })}
         <div ref={bottomRef} />
       </div>
       <form onSubmit={async e => {
