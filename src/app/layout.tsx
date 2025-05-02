@@ -3,6 +3,8 @@ import './globals.css';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { PrivateKeyProvider } from '../contexts/PrivateKeyContext';
 import React from 'react';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
 
 const geistSans = Geist({
   subsets: ['latin'],
@@ -39,11 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             font-[family-name:var(--font-geist-sans)]
           ">
             {/* HEADER (optional nav) */}
-            <header className="row-start-1 w-full max-w-lg flex justify-end gap-4 text-sm">
-              <a href="/signup">Sign Up</a>
-              <a href="/search">Start Chat</a>
-              <a href="/dashboard">Dashboard</a>
-            </header>
+            <Header />
 
             {/* MAIN content */}
             <main className="row-start-2 w-full max-w-lg">
@@ -51,33 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </main>
 
             {/* FOOTER */}
-            <footer className="
-              row-start-3
-              flex
-              gap-[24px]
-              flex-wrap
-              items-center
-              justify-center
-              text-sm
-              text-gray-500
-            ">
-              <a
-                href="https://vercel.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-              >
-                Deployed on Vercel
-              </a>
-              <a
-                href="https://github.com/DeesAmps/WhisperChatv2.0"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-              >
-                View Source
-              </a>
-            </footer>
+            <Footer />
           </div>
         </PrivateKeyProvider>
       </body>
