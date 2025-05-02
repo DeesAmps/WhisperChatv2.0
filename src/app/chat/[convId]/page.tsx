@@ -1,9 +1,10 @@
 // src/app/chat/[convId]/page.tsx
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { auth, db } from '../../../lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   doc,
   getDoc,
@@ -14,7 +15,6 @@ import {
   addDoc,
   serverTimestamp
 } from 'firebase/firestore';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import * as openpgp from 'openpgp';
 import { usePrivateKey } from '../../../contexts/PrivateKeyContext';
 
@@ -26,24 +26,27 @@ interface Message {
 }
 
 export default function ChatPage() {
-  // Grab convId from route params
-  const params = useParams();
-  const raw = params.convId;
-  const convId = Array.isArray(raw) ? raw[0] : raw;
+  // — Hooks & State —
+  const { privateKey, setPrivateKey } = usePrivateKey();
+  const [user, setUser]               = useState<User | null>(null);
+  const [approved, setApproved]       = useState<boolean | null>(null);
+  const [otherPubKey, setOtherPubKey] = useState<openpgp.PublicKey | null>(null);
+  const [myPubKey, setMyPubKey]       = useState<openpgp.PublicKey | null>(null);
+  const [messages, setMessages]       = useState<{ id: string; text: string; isMine: boolean }[]>([]);
+  const [input, setInput]             = useState('');
+  const [armoredInput, setArmoredInput] = useState('');
+  const bottomRef                     = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
-  const { privateKey, setPrivateKey } = usePrivateKey();
+  const params = useParams();
+  const raw    = params?.convId;
+  const convId = typeof raw === 'string'
+    ? raw
+    : Array.isArray(raw)
+      ? raw[0]
+      : '';
 
-  const [user, setUser] = useState<User | null>(null);
-  const [approved, setApproved] = useState<boolean | null>(null);
-  const [otherPubKey, setOtherPubKey] = useState<openpgp.PublicKey | null>(null);
-  const [myPubKey, setMyPubKey]         = useState<openpgp.PublicKey | null>(null);
-  const [messages, setMessages] = useState<Array<{ id: string; text: string; isMine: boolean }>>([]);
-  const [input, setInput]       = useState('');
-  const [armoredInput, setArmoredInput] = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Helper: ensure key is decrypted; ignore "already decrypted"
+  // Decrypt‐helper that ignores “already decrypted”
   async function ensureDecrypted(key: openpgp.PrivateKey): Promise<openpgp.PrivateKey> {
     try {
       return await openpgp.decryptKey({ privateKey: key, passphrase: '' });
@@ -55,16 +58,18 @@ export default function ChatPage() {
     }
   }
 
-  // 1) Watch auth state
+  // — Effects —
+
+  // 1) Auth listener
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) return router.push('/login');
-      setUser(u);
+    const unsub = onAuthStateChanged(auth, u => {
+      if (!u) router.push('/login');
+      else setUser(u);
     });
     return unsub;
   }, [router]);
 
-  // 2) Check approval + load both public keys
+  // 2) Load approval & public keys
   useEffect(() => {
     if (!user || !convId) return;
     (async () => {
@@ -74,14 +79,15 @@ export default function ChatPage() {
       setApproved(ok);
       if (!ok) return;
 
-      // Other's public key
       const participants = data.participants as string[];
-      const otherUid = participants.find(uid => uid !== user.uid)!;
+      const otherUid     = participants.find(uid => uid !== user.uid)!;
+
+      // Other's public key
       const otherSnap = await getDoc(doc(db, 'publicKeys', otherUid));
-      const otherArm = otherSnap.data()!.publicKeyArmored as string;
+      const otherArm  = otherSnap.data()!.publicKeyArmored as string;
       setOtherPubKey(await openpgp.readKey({ armoredKey: otherArm }));
 
-      // Your public key (so you can decrypt your own msgs)
+      // Your public key (for self‐decrypt)
       const mineSnap = await getDoc(doc(db, 'publicKeys', user.uid));
       const myArm     = mineSnap.data()!.publicKeyArmored as string;
       setMyPubKey(await openpgp.readKey({ armoredKey: myArm }));
@@ -93,18 +99,23 @@ export default function ChatPage() {
     if (!approved || !privateKey || !convId) return;
     const ref = collection(db, 'conversations', convId, 'messages');
     const q   = query(ref, orderBy('timestamp'));
+
     const unsub = onSnapshot(
       q,
       async snap => {
         const dec = await Promise.all(
           snap.docs.map(async d => {
-            const m      = d.data() as Message;
-            const isMine = m.sender === user!.uid;
-            const { data: text } = await openpgp.decrypt({
-              message: await openpgp.readMessage({ armoredMessage: m.cipherText }),
-              decryptionKeys: privateKey
-            });
-            return { id: d.id, text, isMine };
+            const { sender, cipherText } = d.data() as Message;
+            const isMine = sender === user!.uid;
+            try {
+              const { data: text } = await openpgp.decrypt({
+                message: await openpgp.readMessage({ armoredMessage: cipherText }),
+                decryptionKeys: privateKey
+              });
+              return { id: d.id, text, isMine };
+            } catch {
+              return { id: d.id, text: '[Unable to decrypt]', isMine };
+            }
           })
         );
         setMessages(dec);
@@ -112,42 +123,23 @@ export default function ChatPage() {
       },
       err => console.error('Subscription error:', err)
     );
+
     return unsub;
   }, [approved, privateKey, convId, user]);
 
-  // 4) Send: encrypt to both keys
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user || !approved || !otherPubKey || !myPubKey || !privateKey || !convId) return;
+  // — Early‐Return Guards —
 
-    const encrypted = await openpgp.encrypt({
-      message: await openpgp.createMessage({ text: input }),
-      encryptionKeys: [otherPubKey, myPubKey], // 🔑 both keys
-      signingKeys: privateKey
-    });
-
-    const ref = collection(db, 'conversations', convId, 'messages');
-    await addDoc(ref, {
-      sender: user.uid,
-      cipherText: encrypted,
-      timestamp: serverTimestamp()
-    });
-    setInput('');
+  // If convId not available yet
+  if (!convId) {
+    return <div className="p-8 text-center">Loading chat…</div>;
   }
-
-  // — RENDER STATES —
 
   // Not approved
   if (approved === false) {
     return <div className="p-8 text-center">🚫 You’re not approved for this chat.</div>;
   }
 
-  // Waiting on approval check
-  if (approved === null) {
-    return <div className="p-8 text-center">Loading…</div>;
-  }
-
-  // Approved but missing your decrypted private key
+  // Approved but missing decrypted private key
   if (approved && !privateKey) {
     return (
       <div className="p-8 max-w-md mx-auto">
@@ -164,8 +156,8 @@ export default function ChatPage() {
           className="px-4 py-2 bg-blue-600 text-white rounded"
           onClick={async () => {
             try {
-              const readKey     = await openpgp.readPrivateKey({ armoredKey: armoredInput });
-              const usableKey   = await ensureDecrypted(readKey);
+              const readKey   = await openpgp.readPrivateKey({ armoredKey: armoredInput });
+              const usableKey = await ensureDecrypted(readKey);
               setPrivateKey(usableKey, armoredInput);
             } catch (err: unknown) {
               if (err instanceof Error && err.message.includes('already decrypted')) {
@@ -188,7 +180,7 @@ export default function ChatPage() {
     return <div className="p-8 text-center">Loading chat…</div>;
   }
 
-  // — FINAL CHAT UI —
+  // — Final Chat UI —
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto p-4 space-y-2">
@@ -196,9 +188,9 @@ export default function ChatPage() {
           <div
             key={m.id}
             className={`max-w-md p-2 rounded break-words ${
-              m.isMine 
-              ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100 self-end'
-              : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+              m.isMine
+                ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100 self-end'
+                : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
             }`}
           >
             {m.text}
@@ -206,7 +198,21 @@ export default function ChatPage() {
         ))}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={handleSend} className="flex p-4 space-x-2">
+      <form onSubmit={async e => {
+        e.preventDefault();
+        if (!user || !approved || !otherPubKey || !myPubKey || !privateKey) return;
+        const encrypted = await openpgp.encrypt({
+          message: await openpgp.createMessage({ text: input }),
+          encryptionKeys: [otherPubKey, myPubKey],
+          signingKeys: privateKey
+        });
+        await addDoc(collection(db, 'conversations', convId, 'messages'), {
+          sender: user.uid,
+          cipherText: encrypted,
+          timestamp: serverTimestamp()
+        });
+        setInput('');
+      }} className="flex p-4 space-x-2">
         <input
           className="flex-1 border border-gray-300 rounded px-3 py-2"
           value={input}
