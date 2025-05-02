@@ -50,6 +50,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json(convs);
   }
 
+  if (req.method === 'GET' && req.query.mode === 'approved'){
+    const snap = await adminDb
+      .collection('conversations')
+      .where(`approved.${uid}`, '==', true)
+      .get();
+    const convs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.status(200).json(convs);
+  }
+
   // 4) PATCH approve → set approved[uid] = true
   if (req.method === 'PATCH') {
     const { convId } = req.body as { convId?: string };
