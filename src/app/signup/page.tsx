@@ -34,7 +34,7 @@ export default function SignupPage() {
 
       // Save private key in memory
       const privKeyObj = await openpgp.readPrivateKey({ armoredKey: privArmored });
-      setPrivateKey(privKeyObj);
+      setPrivateKey(privKeyObj, privArmored);
 
       // Upload public key
       await setDoc(doc(db, 'publicKeys', uid), {
