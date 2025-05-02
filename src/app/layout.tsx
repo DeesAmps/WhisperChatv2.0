@@ -5,6 +5,8 @@ import { PrivateKeyProvider } from '../contexts/PrivateKeyContext';
 import React from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import { Analytics } from "@vercel/analytics/react"
+
 
 const geistSans = Geist({
   subsets: ['latin'],
@@ -42,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           ">
             {/* HEADER (optional nav) */}
             <Header />
+            <Analytics />
 
             {/* MAIN content */}
             <main className="row-start-2 w-full max-w-lg">
