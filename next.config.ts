@@ -1,7 +1,19 @@
-import type { NextConfig } from "next";
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    // Remove `domains` entirely...
 
-const nextConfig: NextConfig = {
-  /* config options here */
+    // And add a remotePattern for chart.googleapis.com:
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'chart.googleapis.com',
+        port: '',        // no port
+        pathname: '/chart', // match the /chart path
+      },
+    ]
+  }
 };
 
-export default nextConfig;
+module.exports = nextConfig;
