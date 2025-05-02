@@ -1,18 +1,27 @@
 // src/lib/firebaseAdmin.ts
+import fs from 'fs';
+import path from 'path';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import type { ServiceAccount } from 'firebase-admin';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import serviceAccountJson from '../../firebase-service-account.json';
 
 let app;
 if (!getApps().length) {
-  // In production (Vercel), parse the JSON env var:
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-    : serviceAccountJson
+  let serviceAccount: ServiceAccount;
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    // Parse the env var and cast to ServiceAccount
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) as ServiceAccount;
+  } else {
+    // Load the JSON file at runtime in local dev
+    const filePath = path.join(process.cwd(), 'firebase-service-account.json');
+    const raw = fs.readFileSync(filePath, 'utf8');
+    serviceAccount = JSON.parse(raw) as ServiceAccount;
+  }
 
   app = initializeApp({
-    credential: cert(serviceAccount)
+    credential: cert(serviceAccount),
   });
 } else {
   app = getApps()[0];
