@@ -1,7 +1,7 @@
 // src/app/signup/page.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as openpgp from 'openpgp';
 import {
@@ -24,11 +24,21 @@ export default function SignupPage() {
   const [pubArmored, setPub]    = useState<string|null>(null);
   const [privArmored, setPriv]  = useState<string|null>(null);
   const [ack, setAck]           = useState(false);
+  const [hasUpper, setHasUpper] = useState(false);
+  const [hasLower, setHasLower] = useState(false);
+  const [hasNumber, setHasNumber] = useState(false);
+  const [hasSpecial, setHasSpecial] = useState(false); 
 
   
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!(hasUpper && hasLower && hasNumber && hasSpecial && password.length >= 12)) {
+      setError('Password does not meet all requirements.');
+      return;
+    }
+
     if (!passphrase || passphrase !== confirm) {
       setError('Passphrases must match and not be empty.');
       return;
@@ -70,6 +80,14 @@ export default function SignupPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    setHasUpper(/[A-Z]/.test(password));
+    setHasLower(/[a-z]/.test(password));
+    setHasNumber(/\d/.test(password)); 
+    setHasSpecial(/[^A-Za-z0-9]/.test(password));
+  }, [password]);
+    
 
   function handleContinue() {
     router.push('/dashboard');
@@ -145,6 +163,7 @@ export default function SignupPage() {
           />
         </label>
         <label className="block">
+          
           <span>Password</span>
           <input
             type="password"
@@ -155,6 +174,28 @@ export default function SignupPage() {
             disabled={loading}
           />
         </label>
+
+         {/* password requirements checklist */}
+        <div className="text-sm mb-4 space-y-1">
+        <p className="font-medium">Password must include:</p>
+          <ul className="list-inside list-disc">
+            <li className={hasUpper   ? 'text-green-600' : 'text-gray-500'}>
+              Uppercase character
+            </li>
+            <li className={hasLower   ? 'text-green-600' : 'text-gray-500'}>
+              Lowercase character
+            </li>
+            <li className={hasNumber  ? 'text-green-600' : 'text-gray-500'}>
+              Numeric character
+            </li>
+            <li className={hasSpecial ? 'text-green-600' : 'text-gray-500'}>
+              Special character (e.g. !@#$%)
+            </li>
+            <li className={password.length >= 12 ? 'text-green-600' : 'text-gray-500'}>
+              Minimum length of 12 characters
+            </li>
+          </ul>
+        </div>
         <label className="block">
           <span>PGP Passphrase</span>
           <input
