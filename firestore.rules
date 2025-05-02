@@ -2,35 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow anyone to read public keys, but only the key owner to write
+    // 1) Public keys remain open for read; only owner can write
     match /publicKeys/{userId} {
       allow read;
       allow write: if request.auth != null
                    && request.auth.uid == userId;
     }
 
-    // Conversations
+    // 2) Conversations
     match /conversations/{convId} {
-      // Creation: must be authenticated & include self in participants
+      // Creation: include yourself
       allow create: if request.auth != null
                     && request.resource.data.participants
-                        .contains(request.auth.uid);
+                         .contains(request.auth.uid);
 
-      // Read/update: only participants
-      allow read, update: if request.auth != null
-                          && resource.data.participants
-                               .contains(request.auth.uid);
+      // ✅ Pending‑list (dashboard): you must be in participants AND approved == false
+      allow list: if request.auth != null
+                  && resource.data.participants
+                        .contains(request.auth.uid)
+                  && resource.data.approved[request.auth.uid] == false;
 
-      // Messages subcollection
+      // ✅ Chat‑view (single get): you must be in participants AND approved == true
+      allow get: if request.auth != null
+                 && resource.data.participants
+                      .contains(request.auth.uid)
+                 && resource.data.approved[request.auth.uid] == true;
+
+      // Approving / other updates: only participants
+      allow update: if request.auth != null
+                    && resource.data.participants
+                         .contains(request.auth.uid);
+
+      // Subcollection of messages
       match /messages/{msgId} {
-        // Posting a message: only participants
-        allow create: if request.auth != null
-                      && get(/databases/$(database)/documents/conversations/$(convId))
-                           .data.participants.contains(request.auth.uid);
-        // Reading messages: only participants
+        // List/read messages only for approved conversations
         allow read: if request.auth != null
-                     && get(/databases/$(database)/documents/conversations/$(convId))
-                          .data.participants.contains(request.auth.uid);
+                     && get(
+                          /databases/$(database)/documents/conversations/$(convId)
+                        ).data.approved[request.auth.uid] == true;
+        // Send a message only if approved
+        allow create: if request.auth != null
+                      && get(
+                           /databases/$(database)/documents/conversations/$(convId)
+                         ).data.approved[request.auth.uid] == true;
       }
     }
   }
