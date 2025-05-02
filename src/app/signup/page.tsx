@@ -16,6 +16,16 @@ export default function SignupPage() {
   const { setPrivateKey } = usePrivateKey();
   const router = useRouter();
 
+  //if already signed in, redirect to dashboard
+  React.useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        router.replace('/dashboard');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
