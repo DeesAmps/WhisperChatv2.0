@@ -2,62 +2,95 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import React,  {useEffect} from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 
-
 export default function Header() {
+  const [user, setUser] = useState<User | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const [user, setUser] = React.useState<User | null>(null);
   useEffect(() => onAuthStateChanged(auth, setUser), []);
+  // close menu on outside click
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
 
   const handleLogout = async () => {
     await signOut(auth);
     localStorage.removeItem('privateKey');
     localStorage.removeItem('privateKeyArmored');
-    window.location.href='/login';
+    window.location.href = '/login';
   };
 
+  const links = [
+    !user
+      ? { href: '/login', label: 'Log In', onClick: undefined }
+      : { href: '#', label: 'Log Out', onClick: handleLogout },
+    !user && { href: '/signup', label: 'Sign Up' },
+    { href: '/profile', label: 'Profile' },
+    { href: '/search', label: 'Search' },
+    { href: '/keygen', label: 'Key Gen' },
+    { href: '/dashboard', label: 'Dashboard' },
+  ].filter(Boolean) as { href: string; label: string; onClick?: () => void }[];
+
   return (
-    <header className="
-      row-start-1
-      w-full max-w-lg
-      flex items-center justify-between
-    ">
+    <header className="w-full max-w-lg flex items-center justify-between p-4">
       {/* Logo */}
       <Link href="/">
-        <Image
-          src="/logo.png"
-          alt="WhisperChat Logo"
-          width={40}
-          height={40}
-          priority
-        />
+        <Image src="/logo.png" alt="WhisperChat Logo" width={40} height={40} priority />
       </Link>
 
-      {/* Nav Links */}
-      <nav className="flex space-x-4 text-sm font-[family-name:var(--font-geist-mono)]">
-        
-        {!user ? (
-            <Link href="/login" className="hover:underline">Log In</Link>
-        ) : (
-            <button 
-                onClick={handleLogout}
-                className="hover:underline bg-transparent p-0"
-            >
-                Log Out
-            </button>
+      {/* Hamburger button */}
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setMenuOpen(open => !open)}
+          className="flex flex-col justify-between w-6 h-5 focus:outline-none"
+          aria-label="Toggle menu"
+        >
+          <span className="block h-0.5 bg-current" />
+          <span className="block h-0.5 bg-current" />
+          <span className="block h-0.5 bg-current" />
+        </button>
 
+        {/* Dropdown menu */}
+        {menuOpen && (
+          <div className="absolute right-0 mt-2 w-40 bg-black border border-gray-200 rounded shadow-lg z-50">
+            <ul className="flex flex-col">
+              {links.map(({ href, label, onClick }) => (
+                <li key={label} className="border-b last:border-b-0">
+                  {onClick ? (
+                    <button
+                      onClick={() => {
+                        onClick();
+                        setMenuOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-purple-800"
+                    >
+                      {label}
+                    </button>
+                  ) : (
+                    <Link
+                      href={href}
+                      className="block px-4 py-2 hover:bg-purple-800"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      {label}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
-        {!user && (
-            <Link href="/signup" className="hover:underline">Sign Up</Link>
-        )}
-        <Link href="/profile" className="hover:underline">Profile</Link>
-        <Link href="/search" className="hover:underline">Search</Link>
-        <Link href="/keygen" className="hover:underline">Key Gen</Link>
-        <Link href="/dashboard" className="hover:underline">Dashboard</Link>
-      </nav>
+      </div>
     </header>
-);
+  );
 }
