@@ -15,10 +15,17 @@ export default function Home() {
         {/* How to use */}
         <section className="space-y-2">
           <h2 className="text-2xl font-semibold">How to Use WhisperChatv2</h2>
+          <p>
+            WhisperChatv2 is a secure messaging app that uses PGP encryption to keep your conversations private. I built this in my spare time and will be maintaining it when I have time. 
+            Here&apos;s how to get started:
+          </p>
           <ol className="list-decimal list-inside space-y-1">
             <li>Sign up with your email &amp; password.</li>
             <li>On signup, a PGP keypair is generated right in your browser.</li>
             <li>Your <em>public key</em> is stored in Firestore; your private key stays encrypted in your browser.</li>
+            <li>If you reload your browser, the armoured key stays in storage but will need to be decrypted with your passphrase. Do this from the dashboard.</li>
+            <li>The app will pull your friends public key from the database as it is stored in a separate container and is referenced by their UID. User email / password is not stored in this table.</li>
+            <li>Passwords are salted + hashed. Emails are not verified so you can realistically put whatever you want in this field as long as it matches ###@###.### but if you need to password reset you&apos;re screwed.</li>
             <li>Share your UID (found on your Dashboard) with friends to start a chat.</li>
             <li>Approve incoming requests on your Dashboard, then start messaging.</li>
           </ol>
@@ -28,7 +35,11 @@ export default function Home() {
         <section className="space-y-2">
           <h2 className="text-2xl font-semibold">How Encryption Works</h2>
           <p>
-            All messages are <strong>end‑to‑end encrypted</strong> using PGP (OpenPGP.js):
+            <strong> WARNING: IF YOU LOSE YOUR PRIVATE KEY, YOU WILL NOT BE ABLE TO DECRYPT YOUR MESSAGES. </strong>
+            <br />
+            You can always generate a new keypair, but you will lose access to any messages encrypted with the old key.
+            <br />
+            All messages are <strong>end‑to‑end encrypted</strong> using PGP (OpenPGP.js): 
           </p>
           <ul className="list-disc list-inside space-y-1">
             <li>
