@@ -1,6 +1,3 @@
-Thought for a couple of seconds
-
-
 # WhisperChatv2
 
 **Author:** David Sampson
@@ -158,7 +155,6 @@ Optimized for Vercel:
 3. Vercel runs `npm run build` and deploys.
 
 ---
-
 ## Security Notes
 
 * **Invisible CAPTCHA**: Google reCAPTCHA v3 tokens verified server‑side to block bots.
@@ -166,9 +162,7 @@ Optimized for Vercel:
 * **Zero‑knowledge**: Firestore stores only public keys and ciphertext.
 * **Strong randomness**: Keys generated using `window.crypto`.
 * **Strict rules**: Firestore security rules lock down reads/writes per user role.
-
 ---
-
 ## License
 
 MIT © David Sampson
