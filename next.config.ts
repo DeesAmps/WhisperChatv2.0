@@ -4,6 +4,7 @@ const nextConfig = {
   images: {
     // Remove `domains` entirely...
 
+
     // And add a remotePattern for chart.googleapis.com:
     remotePatterns: [
       {
@@ -11,6 +12,12 @@ const nextConfig = {
         hostname: 'chart.googleapis.com',
         port: '',        // no port
         pathname: '/chart', // match the /chart path
+      },
+      {
+        protocol: 'https',
+        hostname: 'firebasestorage.googleapis.com',
+        port: '',        // no port
+        pathname: '/**', // match the /firebasejs path
       },
     ]
   }

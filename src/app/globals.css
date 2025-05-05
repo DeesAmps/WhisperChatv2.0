@@ -21,6 +21,14 @@
     --foreground: #ededed;
   }
 }
+/* Make sure the root containers fill the viewport */
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+
 
 body {
   background: var(--background);

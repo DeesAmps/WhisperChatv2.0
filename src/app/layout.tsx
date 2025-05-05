@@ -5,46 +5,33 @@ import { PrivateKeyProvider } from '../contexts/PrivateKeyContext';
 import React from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { Analytics } from "@vercel/analytics/react"
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import Script from 'next/script';
 
-
-const geistSans = Geist({
-  subsets: ['latin'],
-  variable: '--font-geist-sans'
-});
-const geistMono = Geist_Mono({
-  subsets: ['latin'],
-  variable: '--font-geist-mono'
-});
+const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' });
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' });
 
 export const metadata = {
   title: 'WhisperChat',
-  description: 'Encrypted PGP chat'
+  description: 'Encrypted PGP chat',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable}`}
-    >
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-screen w-screen`}>
       <head>
-        {/* Google reCAPTCHA v3 */}
+        {/* reCAPTCHA v3 */}
         <Script
           src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`}
           strategy="beforeInteractive"
         />
       </head>
-
-      <body className="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+      <body className="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 h-screen w-screen">
         <PrivateKeyProvider>
           <div className="
             grid
-            grid-rows-[20px_1fr_20px]
-            items-center
-            justify-items-center
+            grid-rows-[auto_1fr_auto]
             min-h-screen
             p-8
             pb-20
@@ -52,16 +39,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             sm:p-20
             font-[family-name:var(--font-geist-sans)]
           ">
-            {/* HEADER (optional nav) */}
-            <Header />
-            <Analytics />
-            <SpeedInsights />
-            <main className="row-start-2 w-full max-w-lg">
+
+            <div className="row-start-1 w-full container mx-auto px-4 sm:px-6 lg:px-8">
+             <Header />
+           </div>
+           
+
+            {/* now a responsive, centered container */}
+              <main className="row-start-2 w-full container mx-auto px-4 sm:px-6 lg:px-8">
+              <Analytics />
+              <SpeedInsights />
               {children}
             </main>
 
-            {/* FOOTER */}
-            <Footer />
+            <div className="row-start-3 w-full container mx-auto px-4 sm:px-6 lg:px-8">
+             <Footer />
+            </div>
           </div>
         </PrivateKeyProvider>
       </body>

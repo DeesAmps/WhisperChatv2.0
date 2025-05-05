@@ -48,10 +48,42 @@ service cloud.firestore {
       // No deletes allowed
       allow delete: if false;
     }
+    
+    // ─── Friends sub‑collection ──────────────────────────────────────
+    match /users/{userId}/friends/{friendUid} {
+      // Only the owner may list or view their own friends
+      allow list, get: if request.auth.uid == userId;
+
+      // Only the owner may add or remove a friend
+      allow create: if request.auth.uid == userId
+        // the document ID must equal the 'uid' field
+        && request.resource.data.uid == friendUid
+        // only these four fields
+        && request.resource.data.keys().hasOnly([
+            'uid','displayName','photoURL','addedAt'
+          ])
+        // types
+        && request.resource.data.uid         is string
+        && request.resource.data.displayName is string
+        && request.resource.data.photoURL    is string
+        && request.resource.data.addedAt     is timestamp;
+
+      allow delete: if request.auth.uid == userId;
+
+      // no other edits
+      allow update: if false;
+    }
 
    // 3) Conversations
 // -------------------------------------------------------------------
 match /conversations/{convId} {
+
+
+   // allow querying (list) all convs you're a participant in
+  allow list: if isSignedIn() 
+    && request.auth.uid in resource.data.participants;
+    
+  
   // Creation: exactly 2 distinct participants, creator must be one of them,
   // approved map keys == participants, creator’s flag true & other false
   allow create: if isSignedIn()

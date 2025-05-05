@@ -12,7 +12,6 @@ export default function Header() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
-  // close menu on outside click
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -36,19 +35,20 @@ export default function Header() {
       : { href: '#', label: 'Log Out', onClick: handleLogout },
     !user && { href: '/signup', label: 'Sign Up' },
     { href: '/profile', label: 'Profile' },
+    { href: '/friends', label: 'Friends' },
     { href: '/search', label: 'Search' },
     { href: '/keygen', label: 'Key Gen' },
     { href: '/dashboard', label: 'Dashboard' },
   ].filter(Boolean) as { href: string; label: string; onClick?: () => void }[];
 
   return (
-    <header className="w-full max-w-lg flex items-center justify-between p-4">
+    <header className="w-full container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between py-3">
       {/* Logo */}
       <Link href="/">
         <Image src="/logo.png" alt="WhisperChat Logo" width={40} height={40} priority />
       </Link>
 
-      {/* Hamburger button */}
+      {/* Hamburger */}
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen(open => !open)}
@@ -60,7 +60,7 @@ export default function Header() {
           <span className="block h-0.5 bg-current" />
         </button>
 
-        {/* Dropdown menu */}
+        {/* Dropdown */}
         {menuOpen && (
           <div className="absolute right-0 mt-2 w-40 bg-black border border-gray-200 rounded shadow-lg z-50">
             <ul className="flex flex-col">
@@ -68,10 +68,7 @@ export default function Header() {
                 <li key={label} className="border-b last:border-b-0">
                   {onClick ? (
                     <button
-                      onClick={() => {
-                        onClick();
-                        setMenuOpen(false);
-                      }}
+                      onClick={() => { onClick(); setMenuOpen(false); }}
                       className="w-full text-left px-4 py-2 hover:bg-purple-800"
                     >
                       {label}
@@ -79,8 +76,8 @@ export default function Header() {
                   ) : (
                     <Link
                       href={href}
-                      className="block px-4 py-2 hover:bg-purple-800"
                       onClick={() => setMenuOpen(false)}
+                      className="block px-4 py-2 hover:bg-purple-800"
                     >
                       {label}
                     </Link>

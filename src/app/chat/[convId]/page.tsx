@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { auth, db } from '../../../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import FriendsList from '../../../components/FriendsList';
 import {
   doc,
   getDoc,
@@ -207,64 +208,76 @@ export default function ChatPage() {
 
   // — Final Chat UI —
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto p-4 space-y-2">
-      {messages.map(m => {
-        const prof = profiles[m.sender];
-        return (
-          <div key={m.id} className="flex items-start space-x-2">
-            <img
-              src={prof?.photoURL}
-              alt={prof?.displayName}
-              className="w-8 h-8 rounded-full"
-            />
-            <div className={`flex flex-col ${m.isMine ? 'ml-auto items-end' : ''}`}>
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                {prof?.displayName}
-              </span>
-              <div className={`mt-1 p-2 rounded ${
-                m.isMine
-                  ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100'
-                  : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
-              }`}>
-                {m.text}
+    <div className="flex h-full">
+      {/* Sidebar */}
+      <FriendsList />
+  
+      {/* Main chat area */}
+      <div className="flex flex-col flex-1">
+        {/* Message list */}
+        <div className="flex-1 overflow-auto p-4 space-y-2">
+          {messages.map(m => {
+            const prof = profiles[m.sender];
+            return (
+              <div key={m.id} className="flex items-start space-x-2">
+                <img
+                  src={prof?.photoURL}
+                  alt={prof?.displayName}
+                  className="w-8 h-8 rounded-full"
+                />
+                <div className={`flex flex-col ${m.isMine ? 'ml-auto items-end' : ''}`}>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {prof?.displayName}
+                  </span>
+                  <div className={`mt-1 p-2 rounded ${
+                    m.isMine
+                      ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100'
+                      : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+                  }`}>
+                    {m.text}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        );
-      })}
-        <div ref={bottomRef} />
-      </div>
-      <form onSubmit={async e => {
-        e.preventDefault();
-        if (!user || !approved || !otherPubKey || !myPubKey || !privateKey) return;
-        const encrypted = await openpgp.encrypt({
-          message: await openpgp.createMessage({ text: input }),
-          encryptionKeys: [otherPubKey, myPubKey],
-          signingKeys: privateKey
-        });
-        await addDoc(collection(db, 'conversations', convId, 'messages'), {
-          sender: user.uid,
-          cipherText: encrypted,
-          timestamp: serverTimestamp()
-        });
-        setInput('');
-      }} className="flex p-4 space-x-2">
-        <input
-          className="flex-1 border border-gray-300 rounded px-3 py-2"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Type a message…"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="px-4 rounded bg-green-600 text-white disabled:opacity-50"
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+  
+        {/* Input form */}
+        <form
+          onSubmit={async e => {
+            e.preventDefault();
+            if (!user || !approved || !otherPubKey || !myPubKey || !privateKey) return;
+            const encrypted = await openpgp.encrypt({
+              message: await openpgp.createMessage({ text: input }),
+              encryptionKeys: [otherPubKey, myPubKey],
+              signingKeys: privateKey
+            });
+            await addDoc(
+              collection(db, 'conversations', convId, 'messages'),
+              { sender: user.uid, cipherText: encrypted, timestamp: serverTimestamp() }
+            );
+            setInput('');
+          }}
+          className="flex p-4 space-x-2 border-t border-gray-200"
         >
-          Send
-        </button>
-      </form>
+          <input
+            className="flex-1 border border-gray-300 rounded px-3 py-2"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Type a message…"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="px-4 rounded bg-green-600 text-white disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
+  
 }
  
