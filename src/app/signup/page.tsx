@@ -11,6 +11,24 @@ import { auth, db } from '../../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { usePrivateKey } from '../../contexts/PrivateKeyContext';
 
+declare global {
+  interface Window {
+    grecaptcha: {
+      /**
+       * Executes a reCAPTCHA v3 check.
+       * @param siteKey Your public site key
+       * @param options An object with an "action" field
+       * @returns A promise that resolves with the token
+       */
+      execute: (
+        siteKey: string,
+        options: { action: string }
+      ) => Promise<string>;
+      // you can omit render/reset/getResponse if you’re not using them
+    };
+  }
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const { setPrivateKey } = usePrivateKey();
@@ -33,6 +51,28 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!window.grecaptcha) {
+      setError('reCAPTCHA not loaded. Please try again.');
+      return;
+    }
+    const token: string = await window.grecaptcha.execute(
+      process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!,
+      { action: 'signup' }  // action name for reCAPTCHA  
+    );
+
+    //VERIFIY SERVER-SIDE
+    const verify = await fetch('/api/verify-recaptcha', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, action: 'signup' })
+    });
+
+    if (!verify.ok) {
+      setError('reCAPTCHA verification failed. Please try again.');
+      return;
+    }
+
 
     if (!(hasUpper && hasLower && hasNumber && hasSpecial && password.length >= 12)) {
       setError('Password does not meet all requirements.');
