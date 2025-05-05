@@ -16,7 +16,7 @@ export default function Home() {
         <section className="space-y-2">
           <h2 className="text-2xl font-semibold">How to Use WhisperChatv2</h2>
           <p>
-            WhisperChatv2 is a secure messaging app that uses PGP encryption to keep your conversations private. I built this in my spare time and will be maintaining it when I have time. 
+            WhisperChat is a secure messaging app that uses PGP encryption to keep your conversations private. I built this in my spare time and will be maintaining it when I have time. 
             Here&apos;s how to get started:
           </p>
           <ol className="list-decimal list-inside space-y-1">
@@ -57,7 +57,7 @@ export default function Home() {
          {/* Donation QR section */}
       <section className="space-y-2 text-center">
         <h2 className="text-2xl font-semibold">Support the Project</h2>
-        <p>If you find WhisperChatv2 useful, you can donate Bitcoin:</p>
+        <p>If you find WhisperChat useful, you can donate Bitcoin:</p>
         <div className="inline-block p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
           <QRCodeCanvas
             value={bitcoinAddress}
@@ -65,7 +65,7 @@ export default function Home() {
             bgColor="transparent"
             fgColor="#000000"
             level="M"
-            includeMargin={false}
+          
           />
         </div>
         <p className="break-all font-mono text-sm">{bitcoinAddress}</p>
