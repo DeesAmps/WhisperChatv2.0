@@ -1,59 +1,127 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // -------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
 
-    // Public keys: anyone can read; only owner can write
+    // -------------------------------------------------------------------
+    // 1) Public Keys (now holds: key, displayName, photoURL)
+    // -------------------------------------------------------------------
     match /publicKeys/{userId} {
-      allow read;
-      allow write: if request.auth != null
-                   && request.auth.uid == userId;
-    }
-
-    // User profiles: anyone can read basic info; only the owner can write
-    match /users/{userId} {
-      // Optionally allow only authenticated reads:
-      // allow read: if request.auth != null;
+      // Anyone can fetch someone’s public key/metadata
       allow read: if true;
-      allow write: if request.auth != null
-                   && request.auth.uid == userId;
+
+      // Only the owner may create or update their own record,
+      // and they may only write exactly these three string fields.
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['publicKeyArmored','displayName','photoURL'])
+        && request.resource.data.publicKeyArmored        is string
+        && request.resource.data.displayName is string
+        && request.resource.data.photoURL    is string;
+
+      // No deletes allowed
+      allow delete: if false;
     }
 
-    // Conversations metadata
-    match /conversations/{convId} {
-      // Creation: you must include yourself
-      allow create: if request.auth != null
-                    && request.auth.uid in request.resource.data.participants;
+    // -------------------------------------------------------------------
+    // 2) Users (now holds only email)
+    // -------------------------------------------------------------------
+    match /users/{userId} {
+      // Only the user themselves may read their own document
+      allow get: if isOwner(userId);
 
-      // Read the conversation doc only if you’re an approved participant
-      allow get: if request.auth != null
-                 && request.auth.uid in resource.data.participants
-                 && resource.data.approved[request.auth.uid] == true;
+      // Never allow listing all user docs
+      allow list: if false;
 
-      // Approve (update) only if you’re a participant
-      allow update: if request.auth != null
-                    && request.auth.uid in resource.data.participants;
+      // Only the user may create or update, and only the 'email' field
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['email'])
+        && request.resource.data.email is string;
 
-      // Messages subcollection
-      match /messages/{messageId} {
-        // List & get messages only if you’re approved
-        allow list, get: if request.auth != null
-                         && get(
-                              /databases/$(database)/documents/conversations/$(convId)
-                            ).data.approved[request.auth.uid] == true
-                         && request.auth.uid
-                            in get(
-                                 /databases/$(database)/documents/conversations/$(convId)
-                               ).data.participants;
+      // No deletes allowed
+      allow delete: if false;
+    }
 
-        // Send a message only if you’re approved
-        allow create: if request.auth != null
-                      && get(
-                           /databases/$(database)/documents/conversations/$(convId)
-                         ).data.approved[request.auth.uid] == true
-                      && request.auth.uid
-                         in get(
-                              /databases/$(database)/documents/conversations/$(convId)
-                            ).data.participants;
+   // 3) Conversations
+// -------------------------------------------------------------------
+match /conversations/{convId} {
+  // Creation: exactly 2 distinct participants, creator must be one of them,
+  // approved map keys == participants, creator’s flag true & other false
+  allow create: if isSignedIn()
+    && request.resource.data.participants is list
+    && request.resource.data.participants.size() == 2
+    && request.resource.data.participants[0] != request.resource.data.participants[1]
+    // ← replaced .contains() with .hasAny([…])
+    && request.resource.data.participants.hasAny([request.auth.uid])
+    && request.resource.data.approved.keys().hasOnly(request.resource.data.participants)
+    && request.resource.data.approved[request.auth.uid] == true
+    && request.resource.data.approved[
+         request.resource.data.participants[0] == request.auth.uid
+           ? request.resource.data.participants[1]
+           : request.resource.data.participants[0]
+       ] == false;
+
+  // Read only if you’re approved
+  allow get: if isSignedIn()
+    && resource.data.participants.hasAny([request.auth.uid])
+    && resource.data.approved[request.auth.uid] == true;
+
+  // Updates: only flip your own approval bit
+  allow update: if isSignedIn()
+    // you must already be in the convo
+    && resource.data.participants.hasAny([request.auth.uid])
+    // only the approved map can change
+    && request.resource.data.diff(resource.data)
+         .affectedKeys()
+         .hasOnly(['approved'])
+    // your flag was false…
+    && resource.data.approved[request.auth.uid] == false
+    // …and now you’re flipping it to true
+    && request.resource.data.approved[request.auth.uid] == true;
+
+  // No deletions
+  allow delete: if false;
+
+  // -----------------------------------------------------------------
+  // 3a) Messages subcollection
+  // -----------------------------------------------------------------
+    match /messages/{messageId} {
+        // Only approved participants can list/get
+        allow list, get: if isSignedIn()
+          && get(/databases/$(database)/documents/conversations/$(convId))
+               .data.participants.hasAny([request.auth.uid])
+          && get(/databases/$(database)/documents/conversations/$(convId))
+               .data.approved[request.auth.uid] == true;
+
+        // Create: must be from you, supply an encrypted string,
+        // include only sender, cipherText, timestamp, and you must be approved
+        allow create: if isSignedIn()
+          // you must be the sender
+          && request.resource.data.sender == request.auth.uid
+          // only these three fields are allowed
+          && request.resource.data.keys().hasOnly([
+               'sender',
+               'cipherText',
+               'timestamp'
+             ])
+          // field types
+          && request.resource.data.cipherText is string
+          && request.resource.data.timestamp is timestamp
+          // and you must be an approved participant
+          && get(/databases/$(database)/documents/conversations/$(convId))
+               .data.participants.hasAny([request.auth.uid])
+          && get(/databases/$(database)/documents/conversations/$(convId))
+               .data.approved[request.auth.uid] == true;
+
+        // No edits or deletes
+        allow update, delete: if false;
       }
     }
   }

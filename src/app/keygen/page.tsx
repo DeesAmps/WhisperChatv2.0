@@ -58,8 +58,10 @@ export default function KeyGenPage() {
 
       // 4) Overwrite Firestore
       await setDoc(doc(db, 'publicKeys', user.uid), {
-        uid: user.uid,
-        publicKeyArmored: pub
+        
+        publicKeyArmored: pub,
+        displayName: auth.currentUser!.displayName || '',
+        photoURL:   auth.currentUser!.photoURL   || '',
       });
 
       // 5) Show to user

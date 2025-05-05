@@ -1,10 +1,9 @@
-// src/app/profile/page.tsx
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  getAuth, 
+import {
+  getAuth,
   onAuthStateChanged,
   updateEmail as fbUpdateEmail,
   updatePassword as fbUpdatePassword,
@@ -13,11 +12,11 @@ import {
   reauthenticateWithCredential,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { 
-  getStorage, 
-  ref as storageRef, 
-  uploadBytes, 
-  getDownloadURL 
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL
 } from 'firebase/storage';
 import { db } from '../../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
@@ -40,31 +39,35 @@ export default function ProfilePage() {
 
   const [status, setStatus]           = useState<string|null>(null);
 
-  // 1) Load user & Firestore profile
+  // 1) Load user & public‐profile from Firestore
   useEffect(() => {
     const unsub = onAuthStateChanged(authClient, async u => {
       if (!u) {
         router.replace('/login');
-      } else {
-        setUser(u);
-        setEmail(u.email || '');
-        setDisplayName(u.displayName || '');
-        setPhotoURL(u.photoURL || '');
-
-        try {
-          const profileDoc = await getDoc(doc(db, 'users', u.uid));
-          if (profileDoc.exists()) {
-            const data = profileDoc.data();
-            if (data.displayName) setDisplayName(data.displayName);
-            if (data.photoURL) setPhotoURL(data.photoURL);
-          }
-        } catch (err: unknown) {
-          console.error('Failed to read profile doc', err);
-        }
-
-        setLoading(false);
+        return;
       }
+
+      setUser(u);
+      setEmail(u.email || '');
+      // seed from Auth profile
+      setDisplayName(u.displayName || '');
+      setPhotoURL(u.photoURL || '');
+
+      try {
+        // fetch the publicKeys doc for name/avatar
+        const pkSnap = await getDoc(doc(db, 'publicKeys', u.uid));
+        if (pkSnap.exists()) {
+          const data = pkSnap.data();
+          if (data.displayName) setDisplayName(data.displayName);
+          if (data.photoURL)    setPhotoURL(data.photoURL);
+        }
+      } catch (err: unknown) {
+        console.error('Failed to read publicKeys doc', err);
+      }
+
+      setLoading(false);
     });
+
     return unsub;
   }, [router, authClient]);
 
@@ -72,6 +75,7 @@ export default function ProfilePage() {
   async function handleSaveProfile() {
     if (!user) return;
     setStatus('Saving profile…');
+
     try {
       let finalPhotoURL = photoURL;
       if (imageFile) {
@@ -81,12 +85,22 @@ export default function ProfilePage() {
         finalPhotoURL = await getDownloadURL(imgRef);
       }
 
+      // 1) Update Auth profile
       await fbUpdateProfile(user, { displayName, photoURL: finalPhotoURL });
-      await setDoc(doc(db, 'users', user.uid), {
-        displayName,
-        photoURL: finalPhotoURL,
-        email: user.email
-      }, { merge: true });
+
+      // 2) Only keep email in /users (per new rules)
+      await setDoc(
+        doc(db, 'users', user.uid),
+        { email: user.email },
+        { merge: true }
+      );
+
+      // 3) Mirror public info into /publicKeys
+      await setDoc(
+        doc(db, 'publicKeys', user.uid),
+        { displayName, photoURL: finalPhotoURL },
+        { merge: true }
+      );
 
       setPhotoURL(finalPhotoURL);
       setImageFile(null);
@@ -97,7 +111,7 @@ export default function ProfilePage() {
     }
   }
 
-  // 3) Change email
+  // 3) Change email (unchanged)
   async function handleChangeEmail() {
     if (!user) return;
     setStatus('Updating email…');
@@ -106,7 +120,12 @@ export default function ProfilePage() {
       await reauthenticateWithCredential(user, cred);
 
       await fbUpdateEmail(user, newEmail);
-      await setDoc(doc(db, 'users', user.uid), { email: newEmail }, { merge: true });
+      // still okay to only write email
+      await setDoc(
+        doc(db, 'users', user.uid),
+        { email: newEmail },
+        { merge: true }
+      );
 
       setEmail(newEmail);
       setNewEmail('');
@@ -118,7 +137,7 @@ export default function ProfilePage() {
     }
   }
 
-  // 4) Change password
+  // 4) Change password (unchanged)
   async function handleChangePassword() {
     if (!user) return;
     setStatus('Updating password…');
@@ -137,7 +156,7 @@ export default function ProfilePage() {
     }
   }
 
-  // 5) Send password reset email
+  // 5) Send password reset email (unchanged)
   async function handleSendReset() {
     if (!email) return;
     setStatus('Sending password reset email…');

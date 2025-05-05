@@ -67,8 +67,10 @@ export default function SignupPage() {
 
       // 5) Upload public key
       await setDoc(doc(db, 'publicKeys', user.uid), {
-        uid: user.uid,
-        publicKeyArmored: pub
+        publicKeyArmored: pub,
+        displayName: auth.currentUser!.displayName || '',
+        photoURL: auth.currentUser!.photoURL || ''
+
       });
 
       // 6) Show for copying
