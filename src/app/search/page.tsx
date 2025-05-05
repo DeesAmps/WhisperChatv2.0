@@ -55,32 +55,22 @@ export default function SearchPage() {
   }
 
   // 2) Add friend via API route
-  async function handleAddFriend() {
-    setStatus('➕ Adding friend…');
-    try {
-      const auth = getAuth();
-      const me   = auth.currentUser!;
-      const token = await me.getIdToken();
-
-      const res = await fetch('/api/friends/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:  `Bearer ${token}`
-        },
-        body: JSON.stringify({ friendUid: targetUid })
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || res.statusText);
-      }
-      setStatus('✅ Friend added!');
-    } catch (err: unknown) {
-      console.error(err);
-      const message = err instanceof Error ? err.message : 'Failed to add friend';
-      setStatus(message);
-    }
+  async function handleSendRequest() {
+    setStatus('🚀 Sending request…');
+    const me = getAuth().currentUser!;
+    const token = await me.getIdToken();
+    const res = await fetch('/api/friends/request', {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json',
+        Authorization:`Bearer ${token}`
+      },
+      body: JSON.stringify({ targetUid })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    setStatus('✅ Friend request sent!');
   }
+  
 
   // 3) Start (or reuse) conversation
   async function handleStartChat() {
@@ -170,10 +160,10 @@ export default function SearchPage() {
             <p className="font-medium">{profile.displayName || targetUid}</p>
             <div className="mt-2 flex space-x-3">
               <button
-                onClick={handleAddFriend}
+                onClick={handleSendRequest}
                 className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
               >
-                Add Friend
+                Send Friend Request
               </button>
               <button
                 onClick={handleStartChat}

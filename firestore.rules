@@ -73,6 +73,27 @@ service cloud.firestore {
       // no other edits
       allow update: if false;
     }
+    
+    match /users/{userId}/friendRequests/{requesterUid} {
+    // Only the recipient may list/get incoming requests
+    allow list, get: if request.auth.uid == userId;
+
+    // Only the sender may create a request in the recipient’s sub‑col
+    allow create: if request.auth.uid == requesterUid
+      // must include exactly these fields
+      && request.resource.data.keys().hasOnly(['uid','displayName','photoURL','sentAt'])
+      // types
+      && request.resource.data.uid         is string
+      && request.resource.data.displayName is string
+      && request.resource.data.photoURL    is string
+      && request.resource.data.sentAt      is timestamp;
+
+    // Recipient may delete (accept or decline)
+    allow delete: if request.auth.uid == userId;
+
+    // No updates
+    allow update: if false;
+  }
 
    // 3) Conversations
 // -------------------------------------------------------------------
