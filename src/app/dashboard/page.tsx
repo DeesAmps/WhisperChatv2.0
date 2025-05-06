@@ -2,187 +2,225 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { auth } from '../../lib/firebase';
-import { usePrivateKey } from '../../contexts/PrivateKeyContext';
-import * as openpgp from 'openpgp';
-
-interface Conversation { id: string; }
+import { useRouter }                   from 'next/navigation';
+import { auth, db }                    from '../../lib/firebase';
+import {
+  onAuthStateChanged,
+  User as FirebaseUser
+} from 'firebase/auth';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  getDocs,
+  Timestamp
+} from 'firebase/firestore';
 
 export default function DashboardPage() {
-  // — Private‑Key Unlock State —
-  const { privateKey, setPrivateKey } = usePrivateKey();
-  const [unlocking, setUnlocking]     = useState(false);
-  const [passphrase, setPassphrase]   = useState('');
-  const [unlockError, setUnlockError] = useState<string|null>(null);
-
-  // — Auth + Data State —
-  const [user, setUser]       = useState<User|null>(null);
-  const [pending, setPending] = useState<Conversation[]>([]);
-  const [chats, setChats]     = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // 1) Watch auth state
+  // — Auth state —
+  const [user, setUser]               = useState<FirebaseUser|null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  // — Counts & stats —
+  const [friendReqCount, setFriendReqCount] = useState(0);
+  const [convReqCount, setConvReqCount]     = useState(0);
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+
+  // — Invite link copied feedback —
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  // 1) Listen for auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => {
-      if (!u) {
-        router.push('/login');
-      } else {
-        setUser(u);
-      }
+      if (u) setUser(u);
+      else  router.replace('/login');
+      setLoadingAuth(false);
     });
     return unsub;
   }, [router]);
 
-  // 2) Fetch pending & approved once user is set
+  // 2) Friend‑requests count
   useEffect(() => {
     if (!user) return;
-    let active = true;
-    (async () => {
-      setLoading(true);
-      const token = await user.getIdToken();
-      const [pRes, aRes] = await Promise.all([
-        fetch('/api/conversations?mode=pending', {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        fetch('/api/conversations?mode=approved', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-      ]);
-      const pendingList: Conversation[] = pRes.ok ? await pRes.json() : [];
-      const approvedList: Conversation[] = aRes.ok ? await aRes.json() : [];
-      if (active) {
-        setPending(pendingList);
-        setChats(approvedList);
-        setLoading(false);
-      }
-    })();
-    return () => { active = false; };
+    const frCol = collection(db, 'users', user.uid, 'friendRequests');
+    return onSnapshot(frCol, snap => setFriendReqCount(snap.size));
   }, [user]);
 
-  // 3) Approve handler
-  async function approve(convId: string) {
+  // 3) Conversation‑requests count
+  useEffect(() => {
     if (!user) return;
-    const token = await user.getIdToken();
-    const res = await fetch('/api/conversations', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ convId })
-    });
-    if (res.ok) {
-      setPending(ps => ps.filter(c => c.id !== convId));
-      setChats(cs => [...cs, { id: convId }]);
-    } else {
-      console.error('Approve error:', await res.text());
-    }
+    const convCol = collection(db, 'conversations');
+    const q = query(
+      convCol,
+      where('participants', 'array-contains', user.uid),
+      where(`approved.${user.uid}`, '==', false)
+    );
+    return onSnapshot(q, snap => setConvReqCount(snap.size));
+  }, [user]);
+
+  // 4) Unread‑messages count (last 24h)
+  useEffect(() => {
+    if (!user) return;
+
+    const computeUnread = async () => {
+      // cutoff 24h ago
+      const cutoff = Timestamp.fromDate(
+        new Date(Date.now() - 24 * 60 * 60 * 1000)
+      );
+
+      // 1) Get all your approved conversations
+      const convQ = query(
+        collection(db, 'conversations'),
+        where('participants', 'array-contains', user.uid),
+        where(`approved.${user.uid}`, '==', true)
+      );
+      const convSnap = await getDocs(convQ);
+
+      let total = 0;
+
+      // 2) For each conversation, count messages since cutoff not sent by you
+      await Promise.all(
+        convSnap.docs.map(async convDoc => {
+          const msgsQ = query(
+            collection(db, 'conversations', convDoc.id, 'messages'),
+            where('timestamp', '>', cutoff)
+          );
+          const msgsSnap = await getDocs(msgsQ);
+          // subtract any you sent
+          const unreadHere = msgsSnap.docs.filter(d => d.data().sender !== user.uid).length;
+          total += unreadHere;
+        })
+      );
+
+      setUnreadMsgCount(total);
+    };
+
+    // trigger
+    computeUnread().catch(err => console.error('Unread count error:', err));
+  }, [user]);
+
+  // 5) Invite link + copy logic
+  const inviteLink =
+    typeof window !== 'undefined' && user
+      ? `${window.location.origin}/invite/${user.uid}`
+      : '';
+  const copyInvite = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 3000);
+  };
+
+   // 6) Copy UID
+   const copyUid = () => {
+    if (!user) return;
+    navigator.clipboard.writeText(user.uid);
+    alert('UID copied to clipboard!');
+  };
+
+
+  if (loadingAuth) {
+    return <p className="p-6 text-center">Loading…</p>;
   }
 
-  // — Unlock‑Key UI —
-  const armored = typeof window !== 'undefined'
-    ? localStorage.getItem('privateKeyArmored')
-    : null;
+  return (
+    <div className="min-h-screen p-6 space-y-8 font-[family-name:var(--font-geist-mono)]">
+      {/* Welcome */}
+      <h1 className="text-3xl font-semibold text-center">
+        Welcome, {user?.displayName ?? user?.uid.slice(0,6)}!
+      </h1>
 
-  if (user && armored && !privateKey) {
-    return (
-      <div className="max-w-md mx-auto p-6 space-y-4 font-[family-name:var(--font-geist-mono)]">
-        <h2 className="text-xl font-semibold">Unlock Your Private Key</h2>
-        <p className="text-sm text-gray-700">
-          Enter the passphrase you chose to unlock your PGP key and access your chats.
-        </p>
-        {unlockError && (
-          <p className="text-red-600 text-sm">{unlockError}</p>
-        )}
-        <input
-          type="password"
-          placeholder="PGP passphrase"
-          value={passphrase}
-          onChange={e => setPassphrase(e.target.value)}
-          className="w-full border border-gray-300 rounded px-3 py-2"
-          disabled={unlocking}
-        />
+      {user && (
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-4">
+          <h2 className="text-lg font-medium mb-2">Your UID</h2>
+          <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-3 py-2 font-mono text-sm text-gray-900 dark:text-gray-100">
+            <span className="truncate">{user.uid}</span>
+            <button
+              onClick={copyUid}
+              className="ml-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+            >
+              Copy
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Stats Widgets */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="p-4 bg-white dark:bg-gray-800 rounded shadow text-center">
+          <h2 className="text-lg font-medium">Messages in the last 24hr</h2>
+          <p className="text-2xl">{unreadMsgCount}</p>
+        </div>
+        <div className="p-4 bg-white dark:bg-gray-800 rounded shadow text-center">
+          <h2 className="text-lg font-medium">Friend Requests</h2>
+          <p className="text-2xl">{friendReqCount}</p>
+          <button
+            onClick={() => router.push('/friends?tab=requests')}
+            className="mt-2 text-sm text-blue-600 hover:underline"
+          >
+            Manage
+          </button>
+        </div>
+        <div className="p-4 bg-white dark:bg-gray-800 rounded shadow text-center">
+          <h2 className="text-lg font-medium">Chat Requests</h2>
+          <p className="text-2xl">{convReqCount}</p>
+          <button
+            onClick={() => router.push('/chat')}
+            className="mt-2 text-sm text-blue-600 hover:underline"
+          >
+            Review
+          </button>
+        </div>
+        <div className="p-4 bg-white dark:bg-gray-800 rounded shadow text-center">
+          <h2 className="text-lg font-medium">Invite a Friend</h2>
+          <button
+            onClick={copyInvite}
+            className="mt-2 px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition"
+          >
+            Copy Link
+          </button>
+          {inviteCopied && (
+            <p className="mt-1 text-sm text-green-500">Copied!</p>
+          )}
+        </div>
+      </div>
+
+      {/* Quick‑nav Buttons */}
+      <div className="flex flex-wrap justify-center gap-4">
         <button
-          onClick={async () => {
-            setUnlocking(true);
-            setUnlockError(null);
-            try {
-              const readKey = await openpgp.readPrivateKey({ armoredKey: armored! });
-              const decryptedKey = await openpgp.decryptKey({
-                privateKey: readKey,
-                passphrase
-              });
-              setPrivateKey(decryptedKey, armored!);
-            } catch {
-              setUnlockError('Incorrect passphrase');
-            } finally {
-              setUnlocking(false);
-            }
-          }}
-          disabled={unlocking || !passphrase.trim()}
-          className="w-full h-10 rounded-full bg-foreground text-background font-medium hover:bg-[#383838] disabled:opacity-50 transition-colors"
+          onClick={() => router.push('/search')}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
         >
-          {unlocking ? 'Unlocking…' : 'Unlock Key'}
+          🔍 Search by UID
+        </button>
+        <button
+          onClick={() => router.push('/friends')}
+          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+        >
+          👥 Friends
+        </button>
+        <button
+          onClick={() => router.push('/chat')}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+        >
+          💬 Chats Hub
+        </button>
+        <button
+          onClick={() => router.push('/keygen')}
+          className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition"
+        >
+          🔐 Rotate Keys
+        </button>
+        <button
+          onClick={() => router.push('/profile')}
+          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+        >
+          ⚙️ Profile
         </button>
       </div>
-    );
-  }
-
-  // — Loading State —
-  if (loading) {
-    return <div className="p-8 text-center">Loading…</div>;
-  }
-
-  // — Main Dashboard UI —
-  return (
-    <div className="space-y-8 font-[family-name:var(--font-geist-mono)] w-full max-w-lg mx-auto p-4">
-      <section>
-        <h2 className="text-xl font-semibold mb-2">Pending Requests</h2>
-        {pending.length === 0 ? (
-          <p>No pending conversation requests.</p>
-        ) : (
-          <ul className="space-y-2">
-            {pending.map(c => (
-              <li
-                key={c.id}
-                className="flex justify-between items-center border border-gray-200 dark:border-gray-700 rounded-md px-4 py-2"
-              >
-                <span className="font-mono">{c.id}</span>
-                <button
-                  onClick={() => approve(c.id)}
-                  className="px-3 py-1 bg-green-600 text-white rounded"
-                >
-                  Approve
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2 className="text-xl font-semibold mb-2">Your Chats</h2>
-        {chats.length === 0 ? (
-          <p>You have no approved chats yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {chats.map(c => (
-              <li key={c.id}>
-                <Link
-                  href={`/chat/${c.id}`}
-                  className="font-mono text-blue-600 hover:underline"
-                >
-                  Chat {c.id}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }
