@@ -83,13 +83,6 @@ export default function DashboardPage() {
     }
   }
 
-  // 4) Copy UID
-  const copyUid = () => {
-    if (!user) return;
-    navigator.clipboard.writeText(user.uid);
-    alert('UID copied to clipboard!');
-  };
-
   // — Unlock‑Key UI —
   const armored = typeof window !== 'undefined'
     ? localStorage.getItem('privateKeyArmored')
@@ -147,21 +140,6 @@ export default function DashboardPage() {
   // — Main Dashboard UI —
   return (
     <div className="space-y-8 font-[family-name:var(--font-geist-mono)] w-full max-w-lg mx-auto p-4">
-      {user && (
-        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-4">
-          <h2 className="text-lg font-medium mb-2">Your UID</h2>
-          <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-3 py-2 font-mono text-sm text-gray-900 dark:text-gray-100">
-            <span className="truncate">{user.uid}</span>
-            <button
-              onClick={copyUid}
-              className="ml-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
-            >
-              Copy
-            </button>
-          </div>
-        </section>
-      )}
-
       <section>
         <h2 className="text-xl font-semibold mb-2">Pending Requests</h2>
         {pending.length === 0 ? (

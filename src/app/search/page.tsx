@@ -103,15 +103,17 @@ export default function SearchPage() {
 
   return (
     <div className="
+    container mx-auto
+    px-4 sm:px-6 lg:px-8
       flex flex-col gap-8
       items-center sm:items-start
       font-[family-name:var(--font-geist-mono)]
-      p-4
+      py-8
     ">
       <h1 className="text-2xl font-semibold">Start a Chat</h1>
 
       {/* Lookup Form */}
-      <form onSubmit={handleLookup} className="space-y-4 w-full max-w-md">
+      <form onSubmit={handleLookup} className="space-y-4 w-full max-w-lg">
         <label className="block">
           <span>Friend’s UID</span>
           <input
@@ -148,7 +150,7 @@ export default function SearchPage() {
 
       {/* Profile Card + Actions */}
       {profile && (
-        <div className="mt-6 p-4 border rounded-md max-w-md w-full flex items-center space-x-4">
+        <div className="mt-6 p-4 border rounded-md w-full max-w-lg flex items-center space-x-4">
           <Image
             src={profile.photoURL || '/default-avatar.png'}
             alt={profile.displayName}
