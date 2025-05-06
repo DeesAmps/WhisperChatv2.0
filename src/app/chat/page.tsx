@@ -32,6 +32,7 @@ export default function ChatHubPage() {
   const [authLoading, setAuthLoading]   = useState(true);
   const [pending, setPending]           = useState<Thread[]>([]);
   const [active, setActive]             = useState<Thread[]>([]);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // 1) Wait for Firebase Auth
   useEffect(() => {
@@ -117,12 +118,45 @@ export default function ChatHubPage() {
     await updateDoc(ref, { [`approved.${user.uid}`]: true });
   };
 
+  // 4 Invite link logic
+  const inviteLink =
+    typeof window !== 'undefined' && user
+      ? `${window.location.origin}/invite/${user.uid}`
+      : '';
+  
+      const copyInvite = async () => {
+      if (!inviteLink) return;
+      try {
+        await navigator.clipboard.writeText(inviteLink);
+        setInviteCopied(true);
+        setTimeout(() => setInviteCopied(false), 3000);
+      } catch {
+        // silent
+    }
+  };
+
+
   if (authLoading) {
     return <p className="p-6 text-center">Loading…</p>;
   }
 
   return (
     <div className="min-h-screen p-6 font-[family-name:var(--font-geist-mono)]">
+
+      {/* Invite Button */}
+      <div className="max-w-lg mx-auto mb-6 text-center">
+        <button
+          onClick={copyInvite}
+          className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition"
+        >
+          📎 Copy Invite Link
+        </button>
+        {inviteCopied && (
+          <p className="mt-2 text-sm text-green-500">Link copied to clipboard!</p>
+        )}
+      </div>
+
+      
       <h1 className="text-3xl font-semibold mb-6 text-center">Your Chats</h1>
 
       {/* Incoming Requests */}
