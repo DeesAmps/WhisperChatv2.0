@@ -82,7 +82,7 @@ export default function ProfilePage() {
       if (imageFile) {
         const storage = getStorage();
         const imgRef = storageRef(storage, `profileImages/${user.uid}`);
-        await uploadBytes(imgRef, imageFile);
+        await uploadBytes(imgRef, imageFile, { contentType: 'image/png' });
         finalPhotoURL = await getDownloadURL(imgRef);
       }
 
@@ -187,12 +187,39 @@ export default function ProfilePage() {
             width={96}
             height={96}
             className="rounded-full object-cover"
-          />  
+          /> 
+           <label className="block mb-4">
+            <span className="font-medium">Profile Image</span>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              Must be a PNG file, under 500KB.
+            </p>
           <input
             type="file"
-            accept="image/*"
-            onChange={e => e.target.files?.[0] && setImageFile(e.target.files[0])}
+            accept="image/png"
+            className ="mt-2"
+            onChange={e =>{
+              const file = e.target.files?.[0] ?? null;
+              if (!file) {
+                setImageFile(null);
+                return;
+              }
+              //1) must be png
+              if (file.type !== 'image/png') {
+                setStatus('Only PNG images are allowed');
+                return;
+              }
+              //2) must be under 500kb
+              const MAX_BYTES = 500 * 1024;
+              if (file.size > MAX_BYTES) {
+                setStatus('Image must be under 500kb');
+                return;
+              }
+
+              setStatus(null);
+              setImageFile(file);
+            }}
           />
+          </label>
         </div>
         <input
           type="text"
