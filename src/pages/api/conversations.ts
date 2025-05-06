@@ -13,56 +13,60 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const token = authHeader.split('Bearer ')[1];
     const decoded = await adminAuth.verifyIdToken(token);
     uid = decoded.uid;
-  } catch  {
+  } catch {
     return res.status(401).json({ error: 'Invalid token' });
   }
 
-  // 2) POST → create a new conversation request
+  // Only allow two participants, one must be the caller
   if (req.method === 'POST') {
-    // Expect exactly two UIDs, one of which must be the caller
     const { participants } = req.body as { participants?: string[] };
     if (
       !Array.isArray(participants) ||
       participants.length !== 2 ||
       !participants.includes(uid)
     ) {
-      return res
-        .status(400)
-        .json({ error: 'Must supply participants array of two UIDs including yourself' });
+      return res.status(400).json({
+        error: 'Must supply participants array of two UIDs including yourself'
+      });
     }
-  
-    // Identify the other party
+
+    // --- sanitize UIDs ---
+    const uidRegex = /^[A-Za-z0-9_-]{20,}$/;
+    if (!participants.every(p => uidRegex.test(p))) {
+      return res.status(400).json({ error: 'One or more UIDs are invalid' });
+    }
+
+    // Check for existing conversation
     const otherUid = participants.find(p => p !== uid)!;
-  
-    // 1) Check for an existing conversation between these two UIDs
     const existingSnap = await adminDb
       .collection('conversations')
       .where('participants', 'array-contains', uid)
       .get();
-  
-    for (const doc of existingSnap.docs) {
-      const data = doc.data();
-      if (Array.isArray(data.participants) && data.participants.includes(otherUid)) {
-        // Found it—return existing conversation ID
-        return res.status(200).json({ convId: doc.id });
+
+    for (const d of existingSnap.docs) {
+      const data = d.data();
+      if (
+        Array.isArray(data.participants) &&
+        data.participants.includes(otherUid)
+      ) {
+        return res.status(200).json({ convId: d.id });
       }
     }
-  
-    // 2) No existing conversation → create a new one
-    const approved: Record<string, boolean> = {};
+
+    // No existing → create a fresh convo
+    // Use a null‑prototype object to prevent prototype pollution
+    const approved: Record<string, boolean> = Object.create(null);
     participants.forEach(p => {
-      // auto‑approve the caller, leave the other pending
-      approved[p] = p === uid;
+      approved[p] = (p === uid);
     });
-  
+
     const convRef = adminDb.collection('conversations').doc();
     await convRef.set({ participants, approved });
-  
+
     return res.status(201).json({ convId: convRef.id });
   }
-  
 
-  // 3) GET pending → return all convs where approved[uid] === false
+  // GET pending
   if (req.method === 'GET' && req.query.mode === 'pending') {
     const snap = await adminDb
       .collection('conversations')
@@ -72,7 +76,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json(convs);
   }
 
-  if (req.method === 'GET' && req.query.mode === 'approved'){
+  // GET approved
+  if (req.method === 'GET' && req.query.mode === 'approved') {
     const snap = await adminDb
       .collection('conversations')
       .where(`approved.${uid}`, '==', true)
@@ -81,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json(convs);
   }
 
-  // 4) PATCH approve → set approved[uid] = true
+  // PATCH approve
   if (req.method === 'PATCH') {
     const { convId } = req.body as { convId?: string };
     if (!convId) {
@@ -94,7 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ success: true });
   }
 
-  // 5) Fallback for unsupported methods
+  // 5) Fallback
   res.setHeader('Allow', ['GET','POST','PATCH']);
   return res.status(405).end(`Method ${req.method} Not Allowed`);
 }
