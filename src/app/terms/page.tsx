@@ -50,7 +50,7 @@ export default function TermsPage() {
       <br />
       <h2>8. Contact Us</h2>
       <p>
-        Questions or concerns? Please email us at <a href="mailto:info@perditionsecurity.com">info@perditionsecurity.com</a>
+        Questions or concerns? Please email us at <a href="mailto:privacy@whisperchat.io">privacy@whisperchat.io</a>
       </p>
     </main>
   );

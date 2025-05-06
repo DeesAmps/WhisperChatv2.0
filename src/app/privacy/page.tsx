@@ -62,7 +62,7 @@ export default function PrivacyPolicyPage() {
       <br />
       <h2>9. Contact Us</h2>
       <p>
-        If you have questions about this policy, please email <a href="mailto:info@perditionsecurity.com">info@perditionsecurity.com</a>
+        If you have questions about this policy, please email <a href="mailto:privacy@whisperchat.io">privacy@whisperchat.io</a>
       </p>
     </main>
   );
