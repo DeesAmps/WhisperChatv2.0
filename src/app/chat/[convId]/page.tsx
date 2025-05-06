@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import * as openpgp from 'openpgp';
 import { usePrivateKey } from '../../../contexts/PrivateKeyContext';
+import Image from 'next/image';
 
 interface Message {
   id: string;
@@ -220,10 +221,12 @@ export default function ChatPage() {
             const prof = profiles[m.sender];
             return (
               <div key={m.id} className="flex items-start space-x-2">
-                <img
-                  src={prof?.photoURL}
-                  alt={prof?.displayName}
-                  className="w-8 h-8 rounded-full"
+                <Image
+                  src={profiles[m.sender]?.photoURL || '/default-avatar.png'}
+                  alt={profiles[m.sender]?.displayName || m.sender.slice(0,6)}
+                  width={32}
+                  height={32}
+                  className="rounded-full"
                 />
                 <div className={`flex flex-col ${m.isMine ? 'ml-auto items-end' : ''}`}>
                   <span className="text-xs font-medium text-gray-600 dark:text-gray-400">

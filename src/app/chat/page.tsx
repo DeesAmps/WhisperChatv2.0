@@ -16,6 +16,7 @@ import {
   doc,
   getDoc
 } from 'firebase/firestore';
+import Image from 'next/image';
 
 interface Thread {
   convId: string;
@@ -100,11 +101,13 @@ export default function ChatHubPage() {
                 href={`/chat/${t.convId}`}
                 className="flex items-center p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow"
               >
-                <img
-                  src={t.photoURL}
-                  alt={t.displayName}
-                  className="w-12 h-12 rounded-full mr-4 object-cover"
-                />
+                <Image
+                    src={t?.photoURL || '/default-avatar.png'}
+                    alt={t?.displayName || t.otherUid.slice(0,6)}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
+                    />
                 <div>
                   <p className="font-medium">{t.displayName}</p>
                   <p className="text-xs text-gray-500">UID: {t.otherUid}</p>

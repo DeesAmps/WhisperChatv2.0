@@ -7,6 +7,7 @@ import { auth } from '../lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import * as openpgp from 'openpgp';
 import { usePrivateKey } from '../contexts/PrivateKeyContext';
+import Image from 'next/image';
 
 export default function Footer() {
   // 1) Auth state
@@ -111,7 +112,14 @@ export default function Footer() {
         Privacy Policy
       </Link>
       <div className="flex items-center justify-center mt-3">
-        <img src="/logo.png" alt="WhisperChat Logo" width={40} height={40} />
+        <div className="flex items-center justify-center mt-3">
+          <Image
+          src="/logo.png"
+            alt="WhisperChat Logo"
+            width={40}
+            height={40}
+          />
+        </div>
       </div>
     </footer>
   );

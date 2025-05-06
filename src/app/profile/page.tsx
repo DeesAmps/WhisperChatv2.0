@@ -20,6 +20,7 @@ import {
 } from 'firebase/storage';
 import { db } from '../../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
+import Image from 'next/image';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -180,11 +181,13 @@ export default function ProfilePage() {
       <section className="space-y-2">
         <h2 className="font-medium">Profile</h2>
         <div className="flex items-center space-x-4">
-          <img
-            src={photoURL || '/default-avatar.png'}
-            alt="Profile"
-            className="w-16 h-16 rounded-full object-cover border"
-          />
+            <Image
+            src={photoURL}
+            alt="Profile image"
+            width={96}
+            height={96}
+            className="rounded-full object-cover"
+          />  
           <input
             type="file"
             accept="image/*"
