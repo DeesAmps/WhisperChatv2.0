@@ -36,6 +36,7 @@ export default function Header() {
     !user && { href: '/signup', label: 'Sign Up' },
     { href: '/profile', label: 'Profile' },
     { href: '/friends', label: 'Friends' },
+    { href: '/chat', label: 'Chats' },
     { href: '/search', label: 'Search' },
     { href: '/keygen', label: 'Key Gen' },
     { href: '/dashboard', label: 'Dashboard' },
