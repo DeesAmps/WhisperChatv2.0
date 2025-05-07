@@ -162,19 +162,50 @@ match /conversations/{convId} {
           && request.resource.data.keys().hasOnly([
                'sender',
                'cipherText',
-               'timestamp'
+               'timestamp',
+               'readBy'
              ])
           // field types
-          && request.resource.data.cipherText is string
-          && request.resource.data.timestamp is timestamp
-          // and you must be an approved participant
+         && request.resource.data.cipherText is string
+          && request.resource.data.timestamp  is timestamp
+          // readBy must be a list of exactly one element: your UID
+          && request.resource.data.readBy is list
+          && request.resource.data.readBy.size() == 1
+          && request.resource.data.readBy[0] == request.auth.uid
           && get(/databases/$(database)/documents/conversations/$(convId))
                .data.participants.hasAny([request.auth.uid])
           && get(/databases/$(database)/documents/conversations/$(convId))
                .data.approved[request.auth.uid] == true;
+               
+          // Allow marking a message "read" by adding your UID to its readBy array
+      	allow update: if isSignedIn()
+          // must already be in the convo and approved
+          && get(/databases/$(database)/documents/conversations/$(convId))
+               .data.participants.hasAny([request.auth.uid])
+          && get(/databases/$(database)/documents/conversations/$(convId))
+               .data.approved[request.auth.uid] == true
+
+          // only the readBy field may change
+          && request.resource.data.diff(resource.data)
+               .affectedKeys()
+               .hasOnly(["readBy"])
+
+          // enforce that we're turning resource.data.readBy: string[] → new array
+          && resource.data.readBy is list
+          && request.resource.data.readBy is list
+
+          // it must be exactly one element larger than before…
+          && request.resource.data.readBy.size() == resource.data.readBy.size() + 1
+
+          // …and it must contain *all* the old UIDs…
+          && request.resource.data.readBy.hasAll(resource.data.readBy)
+
+          // …and your UID wasn’t already in it but now is
+          && !resource.data.readBy.hasAny([request.auth.uid])
+          && request.resource.data.readBy.hasAny([request.auth.uid]);
 
         // No edits or deletes
-        allow update, delete: if false;
+        allow delete: if false;
       }
     }
   }

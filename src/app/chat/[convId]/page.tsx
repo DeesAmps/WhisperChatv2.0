@@ -14,19 +14,25 @@ import {
   orderBy,
   onSnapshot,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc,
+  arrayUnion
 } from 'firebase/firestore';
 import * as openpgp from 'openpgp';
 import { usePrivateKey } from '../../../contexts/PrivateKeyContext';
 import Image from 'next/image';
 
-interface Message {
-  id: string;
-  sender: string;
-  cipherText: string;
-  timestamp: { toDate: () => Date };
-}
 
+
+// UI‐ready shape
+interface ChatMessage {
+  id:        string;
+  sender:    string;
+  text:      string;
+  isMine:    boolean;
+  timestamp: Date;
+  readBy:    string[];
+}
 interface Profile {
   displayName: string;
   photoURL: string;
@@ -39,7 +45,7 @@ export default function ChatPage() {
   const [approved, setApproved]       = useState<boolean | null>(null);
   const [otherPubKey, setOtherPubKey] = useState<openpgp.PublicKey | null>(null);
   const [myPubKey, setMyPubKey]       = useState<openpgp.PublicKey | null>(null);
-  const [messages, setMessages]       = useState<{ id: string; text: string; isMine: boolean; sender: string }[]>([]);
+  const [messages, setMessages]       = useState<ChatMessage[]>([]);
   const [input, setInput]             = useState('');
   const [armoredInput, setArmoredInput] = useState('');
   const [profiles, setProfiles]       = useState<Record<string, Profile>>({});
@@ -117,42 +123,78 @@ export default function ChatPage() {
     })();
   }, [user, convId]);
 
-  // 3) Subscribe & decrypt messages
-  useEffect(() => {
-    if (!approved || !privateKey || !convId) return;
-    const ref = collection(db, 'conversations', convId, 'messages');
-    const q   = query(ref, orderBy('timestamp'));
+    // 3) Subscribe & decrypt messages
+    useEffect(() => {
+      if (!approved || !privateKey || !convId) return;
+      const ref = collection(db, 'conversations', convId, 'messages');
+      const q   = query(ref, orderBy('timestamp'));
 
-    const unsub = onSnapshot(
-      q,
-      async snap => {
+      const unsub = onSnapshot(q, async snap => {
+        // 1) First, mark any unread incoming messages as read
+        await Promise.all(
+          snap.docs.map(async d => {
+            const raw = d.data() as { sender: string; readBy?: string[] };
+            const isMine = raw.sender === user!.uid;
+            const haveRead = Array.isArray(raw.readBy) ? raw.readBy : [];
+
+            if (!isMine && !haveRead.includes(user!.uid)) {
+              // append this user to readBy
+              await updateDoc(
+                doc(db, 'conversations', convId, 'messages', d.id),
+                { readBy: arrayUnion(user!.uid) }
+              );
+            }
+          })
+        ).catch(console.error);
+
+        // 2) Then decrypt & map to your ChatMessage shape
         const dec = await Promise.all(
-                    snap.docs.map(async d => {
-                      const m = d.data() as Message;
-                      const isMine = m.sender === user!.uid;
-                      let text: string;
-                      try {
-                        const { data } = await openpgp.decrypt({
-                          message: await openpgp.readMessage({ armoredMessage: m.cipherText }),
-                          decryptionKeys: privateKey
-                        });
-                        text = data;
-                      } catch {
-                        text = '[Unable to decrypt]';
-                      }
-                      // Always include sender
-                      return { id: d.id, text, isMine, sender: m.sender };
-                    })
-                  );
-          
+          snap.docs.map(async d => {
+            const raw = d.data() as {
+              sender:     string;
+              cipherText: string;
+              timestamp?: { toDate: () => Date } | null;
+              readBy?:    string[];
+            };
+
+            const isMine = raw.sender === user!.uid;
+
+            // decrypt…
+            let text: string;
+            try {
+              const msg = await openpgp.readMessage({ armoredMessage: raw.cipherText });
+              const { data } = await openpgp.decrypt({
+                message:        msg,
+                decryptionKeys: privateKey
+              });
+              text = data;
+            } catch {
+              text = "[Unable to decrypt]";
+            }
+
+            // timestamp fallback
+            const when = raw.timestamp?.toDate?.() ?? new Date();
+            // ensure an array
+            const readBy = Array.isArray(raw.readBy) ? raw.readBy : [];
+
+            return {
+              id:        d.id,
+              sender:    raw.sender,
+              text,
+              isMine,
+              timestamp: when,
+              readBy
+            };
+          })
+        );
+
         setMessages(dec);
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       },
-      err => console.error('Subscription error:', err)
-    );
+      err => console.error('Subscription error:', err));
 
-    return unsub;
-  }, [approved, privateKey, convId, user]);
+      return unsub;
+    }, [approved, privateKey, convId, user]);
 
   // — Early‐Return Guards —
 
@@ -217,21 +259,24 @@ export default function ChatPage() {
       <div className="flex flex-col flex-1">
         {/* Message list */}
         <div className="flex-1 overflow-auto p-4 space-y-2">
-          {messages.map(m => {
-            const prof = profiles[m.sender];
+        {messages.map(m => {
+            const timeString = m.timestamp.toLocaleTimeString([], {
+              hour: 'numeric',
+              minute: '2-digit'
+            });
+            const otherUid   = Object.keys(profiles).find(uid => uid !== user!.uid)!;
+            const wasRead    = m.isMine && m.readBy.includes(otherUid);
+
             return (
-              <div key={m.id} className="flex items-start space-x-2">
-                <Image
-                  src={profiles[m.sender]?.photoURL || '/default-avatar.png'}
-                  alt={profiles[m.sender]?.displayName || m.sender.slice(0,6)}
-                  width={32}
-                  height={32}
-                  className="rounded-full"
-                />
-                <div className={`flex flex-col ${m.isMine ? 'ml-auto items-end' : ''}`}>
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                    {prof?.displayName}
-                  </span>
+              <div key={m.id} className="flex flex-col space-y-1">
+                <div className={`flex items-start space-x-2 ${m.isMine ? 'justify-end' : ''}`}>
+                  <Image
+                     src={profiles[m.sender]?.photoURL || '/default-avatar.png'}
+                     alt={profiles[m.sender]?.displayName || m.sender.slice(0,6)}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
+                  />
                   <div className={`mt-1 p-2 rounded ${
                     m.isMine
                       ? 'bg-blue-100 text-gray-900 dark:bg-blue-800 dark:text-blue-100'
@@ -240,7 +285,12 @@ export default function ChatPage() {
                     {m.text}
                   </div>
                 </div>
+                <div className={`text-xs text-gray-500 ${m.isMine ? 'text-right pr-10' : 'pl-10'}`}>
+                  {timeString}
+                  {m.isMine && <span className="ml-2">{wasRead ? '✓✓' : '✓'}</span>}
+                </div>
               </div>
+
             );
           })}
           <div ref={bottomRef} />
@@ -258,7 +308,7 @@ export default function ChatPage() {
             });
             await addDoc(
               collection(db, 'conversations', convId, 'messages'),
-              { sender: user.uid, cipherText: encrypted, timestamp: serverTimestamp() }
+              { sender: user.uid, cipherText: encrypted, timestamp: serverTimestamp(), readBy: [user.uid] } 
             );
             setInput('');
           }}
