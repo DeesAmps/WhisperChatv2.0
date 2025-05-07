@@ -34,6 +34,7 @@ export default function Header() {
       ? { href: '/login', label: 'Log In', onClick: undefined }
       : { href: '#', label: 'Log Out', onClick: handleLogout },
     !user && { href: '/signup', label: 'Sign Up' },
+    { href: '/about', label: 'About' },
     { href: '/profile', label: 'Profile' },
     { href: '/friends', label: 'Friends' },
     { href: '/chat', label: 'Chats' },
