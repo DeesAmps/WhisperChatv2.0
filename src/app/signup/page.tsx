@@ -10,6 +10,7 @@ import {
 import { auth, db } from '../../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { usePrivateKey } from '../../contexts/PrivateKeyContext';
+import { GenerateKeyOptions } from 'openpgp';
 
 declare global {
   interface Window {
@@ -46,7 +47,9 @@ export default function SignupPage() {
   const [hasLower, setHasLower] = useState(false);
   const [hasNumber, setHasNumber] = useState(false);
   const [hasSpecial, setHasSpecial] = useState(false); 
-
+  const [keyType, setKeyType] = useState<'rsa'|'ecc'>('rsa');
+  const [rsaBits, setRsaBits] = useState<number>(2048);
+  
   
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -88,15 +91,23 @@ export default function SignupPage() {
     try {
       // 1) Firebase signup
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
-
-      // 2) Generate PGP keypair with passphrase
+    
+      // 2) Generate PGP keypair with passphrase, based on user choice
+      const generateOptions: GenerateKeyOptions & { format?: 'armored' } = {
+        userIDs:   [{ name: email, email }],
+        passphrase,
+        // only allow armored output
+        format:    'armored',
+    
+        // spread in RSA vs ECC params
+        ...(keyType === 'rsa'
+          ? { type: 'rsa', rsaBits }
+          : { type: 'ecc', curve: 'curve25519' as openpgp.EllipticCurveName })
+      };
+    
+    
       const { privateKey: priv, publicKey: pub } =
-        await openpgp.generateKey({
-          type: 'rsa',
-          rsaBits: 2048,
-          userIDs: [{ name: email, email }],
-          passphrase
-        });
+        await openpgp.generateKey(generateOptions);
 
       // 3) Read & decrypt private key
       const privKeyObj = await openpgp.readPrivateKey({ armoredKey: priv });
@@ -216,7 +227,34 @@ export default function SignupPage() {
             disabled={loading}
           />
         </label>
+            {/* 🔐 Algorithm selection */}
+          <label className="block">
+            <span>Key Type</span>
+            <select
+              className="mt-1 block w-full border rounded px-3 py-2"
+              value={keyType}
+              onChange={e => setKeyType(e.target.value as 'rsa'|'ecc')}
+              disabled={loading}
+            >
+              <option value="rsa">RSA</option>
+              <option value="ecc">Curve25519 (ECC)</option>
+            </select>
+          </label>
 
+          {keyType === 'rsa' && (
+            <label className="block">
+              <span>RSA Key Size</span>
+              <select
+                className="mt-1 block w-full border rounded px-3 py-2"
+                value={rsaBits}
+                onChange={e => setRsaBits(parseInt(e.target.value, 10))}
+                disabled={loading}
+              >
+                <option value={2048}>2048 bits</option>
+                <option value={4096}>4096 bits</option>
+              </select>
+            </label>
+          )}
          {/* password requirements checklist */}
         <div className="text-sm mb-4 space-y-1">
         <p className="font-medium">Password must include:</p>
