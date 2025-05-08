@@ -86,41 +86,64 @@ export default function ChatPage() {
   // 2) Load approval & public keys
   useEffect(() => {
     if (!user || !convId) return;
+    let otherUnsub: () => void;
+    let mineUnsub: () => void;
+  
     (async () => {
-      const convSnap = await getDoc(doc(db, 'conversations', convId));
-      const data = convSnap.data();
-      const ok = !!data?.approved?.[user.uid];
+      // first load approval
+      const convRef  = doc(db, 'conversations', convId);
+      const convSnap = await getDoc(convRef);
+      const data     = convSnap.data();
+      const ok       = !!data?.approved?.[user.uid];
       setApproved(ok);
       if (!ok) return;
-
+  
       const participants = data.participants as string[];
       const otherUid     = participants.find(uid => uid !== user.uid)!;
-
-      // Other's public key
-      const otherSnap = await getDoc(doc(db, 'publicKeys', otherUid));
-      const otherArm  = otherSnap.data()!.publicKeyArmored as string;
-      setOtherPubKey(await openpgp.readKey({ armoredKey: otherArm }));
-
-      // Your public key (for self‐decrypt)
-      const mineSnap = await getDoc(doc(db, 'publicKeys', user.uid));
-      const myArm     = mineSnap.data()!.publicKeyArmored as string;
-      setMyPubKey(await openpgp.readKey({ armoredKey: myArm }));
-       
-      // --- NEW: fetch and cache each participant's profile ---
+  
+      // now subscribe to changes in the other user's public key
+      const otherKeyRef = doc(db, 'publicKeys', otherUid);
+      otherUnsub = onSnapshot(otherKeyRef, snap => {
+        const arm = snap.data()?.publicKeyArmored;
+        if (arm) {
+          openpgp.readKey({ armoredKey: arm })
+            .then(key => setOtherPubKey(key))
+            .catch(console.error);
+        }
+      });
+  
+      // subscribe to changes in your own public key
+      const myKeyRef = doc(db, 'publicKeys', user.uid);
+      mineUnsub = onSnapshot(myKeyRef, snap => {
+        const arm = snap.data()?.publicKeyArmored;
+        if (arm) {
+          openpgp.readKey({ armoredKey: arm })
+            .then(key => setMyPubKey(key))
+            .catch(console.error);
+        }
+      });
+  
+      // cache profiles once
       const docs = await Promise.all(
-          participants.map(uid => getDoc(doc(db, 'publicKeys', uid)))
-        );
-        const profMap: Record<string, Profile> = {};
-        participants.forEach((uid, i) => {
-          const d = docs[i].data();
-          profMap[uid] = {
-            displayName: d?.displayName || uid.slice(0,6),
-            photoURL:    d?.photoURL    || '/default-avatar.png'
-          };
-        });
-        setProfiles(profMap);
-        // -----------------------------------------------
-    })();
+        participants.map(uid => getDoc(doc(db,'publicKeys',uid)))
+      );
+      const profMap: Record<string,Profile> = {};
+      participants.forEach((uid, i) => {
+        const d = docs[i].data();
+        profMap[uid] = {
+          displayName: d?.displayName || uid.slice(0,6),
+          photoURL:    d?.photoURL    || '/default-avatar.png'
+        };
+      });
+      setProfiles(profMap);
+  
+    })().catch(console.error);
+  
+    // no need to resub on conv changes for public keys
+    return () => {
+      otherUnsub?.();
+      mineUnsub?.();
+    };
   }, [user, convId]);
 
     // 3) Subscribe & decrypt messages
