@@ -134,14 +134,15 @@ export default function FriendsList() {
                 }}
               >
                 <Image 
-                    src ={f.photoURL}
+                    src ={f.photoURL?.trim() || '/default-avatar.png' }
                     alt={f.displayName}
                     width={40}
                     height={40}
                     className="rounded-full object-cover"
                 />
+                
                 <span className="flex-1 text-sm font-medium">
-                  {f.displayName || f.uid}
+                  {f.displayName || f.uid.slice(0, 6)}  
                 </span>
               </div>
               {convMap[f.uid] && (
